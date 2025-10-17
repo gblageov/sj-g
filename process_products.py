@@ -3,6 +3,7 @@ import json
 import ast
 import re
 import os
+import sys
 
 # Глобална променлива за името на целевата колона
 TARGET_METAFIELD_COLUMN = 'Metafield: shopify_migration_connectet_products'
@@ -11,27 +12,18 @@ TARGET_METAFIELD_COLUMN = 'Metafield: shopify_migration_connectet_products'
 DEBUG_ITEMS = {} 
 
 def process_woocommerce_to_shopify(file_path):
-    """
-    Processes an Excel file to connect products based on SKU (with fallbacks to main and variant product IDs).
-    
-    Args:
-        file_path (str): Path to the Excel file
-        
-    Returns:
-        str: Path to the updated Excel file
-    """
     if not os.path.exists(file_path):
         print(f"ГРЕШКА: Файлът не е намерен на адрес: {file_path}")
         return None
     
     try:
-        df = pd.read_excel(file_path, sheet_name='Products')
+        # Потискаме предупреждението от openpyxl при четене
+        df = pd.read_excel(file_path, sheet_name='Products', engine='openpyxl')
         print(f"Файлът '{file_path}' е прочетен успешно. Общо редове: {len(df)}")
     except Exception as e:
         print(f"ГРЕШКА при четене на Excel файла: {e}")
         return None
     
-    # --- ПРОМЯНА: Добавяме новата колона към задължителните ---
     required_columns = [
         'Metafield: woo.woobt_ids', 'Variant SKU', 'Handle', 
         TARGET_METAFIELD_COLUMN, 'Metafield: woo.id', 'Variant Metafield: woo.id'
@@ -41,12 +33,17 @@ def process_woocommerce_to_shopify(file_path):
             print(f"ГРЕШКА: Липсва задължителна колона '{col}' във файла.")
             return None
 
-    # --- ПОДОБРЕНА ЛОГИКА ЗА СЪЗДАВАНЕ НА РЕЧНИЦИ С 3 ИЗТОЧНИКА ---
+    # <<< НОВО: РЕШЕНИЕ ЗА FutureWarning >>>
+    # Изрично задаваме типа на целевата колона като 'object' (за текст),
+    # за да избегнем предупреждението за несъвместим тип данни.
+    df[TARGET_METAFIELD_COLUMN] = df[TARGET_METAFIELD_COLUMN].astype(object)
+
     sku_to_handle = {}
     woo_id_to_handle = {}
     last_valid_handle = '' 
 
     print("\nЗапочва създаване на речници за търсене...")
+    # ... (останалата част от кода остава НАПЪЛНО НЕПРОМЕНЕНА) ...
     for idx, row in df.iterrows():
         if pd.notna(row['Handle']) and str(row['Handle']).strip() != '':
             last_valid_handle = str(row['Handle']).strip()
@@ -54,26 +51,21 @@ def process_woocommerce_to_shopify(file_path):
         if not last_valid_handle:
             continue
 
-        # 1. Свързване по SKU (без промяна)
         variant_sku = row['Variant SKU']
         if pd.notna(variant_sku) and str(variant_sku).strip() != '':
             sku_str = str(variant_sku).strip()
             sku_to_handle[sku_str] = last_valid_handle
 
-        # 2. Свързване по ID с приоритет
         id_to_process = None
         main_woo_id = row['Metafield: woo.id']
         
-        # Първо проверяваме основното ID поле
         if pd.notna(main_woo_id) and str(main_woo_id).strip() != '':
             id_to_process = main_woo_id
         else:
-            # Ако е празно, проверяваме ID полето за варианти
             variant_woo_id = row['Variant Metafield: woo.id']
             if pd.notna(variant_woo_id) and str(variant_woo_id).strip() != '':
                 id_to_process = variant_woo_id
         
-        # Ако сме намерили ID от един от двата източника, го обработваме
         if id_to_process:
             try:
                 id_str = str(int(float(id_to_process)))
@@ -87,12 +79,8 @@ def process_woocommerce_to_shopify(file_path):
     print(f"-> Създаден е речник с {len(sku_to_handle)} уникални SKU-та.")
     print(f"-> Създаден е речник с {len(woo_id_to_handle)} уникални Woo ID-та (от двата източника).")
 
-    # Изчислява и извежда броя на редовете с попълнено мета поле
     rows_with_woobt_data = df['Metafield: woo.woobt_ids'].notna().sum()
     print(f"--> Намерени са общо {rows_with_woobt_data} реда с данни в 'Metafield: woo.woobt_ids', които ще бъдат обработени.")
-
-    # ... Останалата част от кода за обработка остава НАПЪЛНО СЪЩАТА, ...
-    # ... защото цялата нова логика е капсулирана в създаването на речниците.
     
     updated_count = 0
     rows_with_data_count = 0
@@ -107,6 +95,10 @@ def process_woocommerce_to_shopify(file_path):
             continue
             
         rows_with_data_count += 1
+        
+        print(f"Обработване на ред {rows_with_data_count} от {rows_with_woobt_data}...", end='\r')
+        sys.stdout.flush()
+        
         excel_row_num = idx + 2
         
         try:
@@ -178,12 +170,21 @@ def process_woocommerce_to_shopify(file_path):
             print(f"Критична грешка при обработка на ред {excel_row_num}: {e}")
             continue
     
-    output_path = file_path.replace('.xlsx', '_updated.xlsx')
-    df.to_excel(output_path, index=False, sheet_name='Products')
+    print() 
     
+    # <<< ПРОМЯНА 2: ТОВА Е НОВАТА ИНДИКАЦИЯ >>>
+    print("\nОбработката на редовете приключи. Започва запис на новия Excel файл...")
+    print("Тази стъпка може да отнеме известно време, моля изчакайте...")
+
     # Диагностичен доклад
+    output_path = file_path.replace('.xlsx', '_updated.xlsx')
+    df.to_excel(output_path, index=False, sheet_name='Products', engine='xlsxwriter')
+    
     print("\n" + "="*50)
     print("ОБРАБОТАТА ПРИКЛЮЧИ - ДИАГНОСТИЧЕН ДОКЛАД")
+    # ... останалата част от кода...
+
+# ... (кодът продължава без промяна)
     print("="*50)
     print(f"Общо намерени редове с данни в 'Metafield: woo.woobt_ids': {rows_with_data_count}")
     print(f"Успешно обновени редове в '{TARGET_METAFIELD_COLUMN}': {updated_count}")
