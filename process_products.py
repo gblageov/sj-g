@@ -6,7 +6,7 @@ import os
 import sys
 
 # Глобална променлива за името на целевата колона
-TARGET_METAFIELD_COLUMN = 'Metafield: shopify_migration_connectet_products'
+TARGET_METAFIELD_COLUMN = 'Metafield: global.Combined handle'
 
 # --- КОНФИГУРАЦИЯ ЗА ДЕБЪГВАНЕ ---
 DEBUG_ITEMS = {} 
@@ -24,6 +24,24 @@ def process_woocommerce_to_shopify(file_path):
         print(f"ГРЕШКА при четене на Excel файла: {e}")
         return None
     
+    # --- ПРОМЯНА 1: СЪЗДАВАНЕ НА ЦЕЛЕВАТА КОЛОНА, АКО ЛИПСВА ---
+    # Проверяваме дали целевата колона съществува. Ако не, я създаваме
+    # на правилната позиция - преди 'Metafield: woo.woobt_ids'.
+    if TARGET_METAFIELD_COLUMN not in df.columns:
+        print(f"Забележка: Целевата колона '{TARGET_METAFIELD_COLUMN}' липсва. Тя ще бъде създадена автоматично.")
+        try:
+            # Намираме индекса на колоната, преди която искаме да вмъкнем новата
+            reference_col_index = df.columns.get_loc('Metafield: woo.woobt_ids')
+            # Вмъкваме новата празна колона на намерената позиция
+            df.insert(loc=reference_col_index, column=TARGET_METAFIELD_COLUMN, value='')
+            print(f"-> Колоната е успешно създадена на позиция {reference_col_index}.")
+        except KeyError:
+            print(f"ГРЕШКА: Референтната колона 'Metafield: woo.woobt_ids' не е намерена, за да се добави новата колона.")
+            return None
+    # --- КРАЙ НА ПРОМЯНА 1 ---
+
+    # Проверяваме дали всички останали задължителни колони съществуват.
+    # Целевата колона вече е гарантирано налична, затова можем да я включим в проверката.
     required_columns = [
         'Metafield: woo.woobt_ids', 'Variant SKU', 'Handle', 
         TARGET_METAFIELD_COLUMN, 'Metafield: woo.id', 'Variant Metafield: woo.id'
@@ -33,7 +51,6 @@ def process_woocommerce_to_shopify(file_path):
             print(f"ГРЕШКА: Липсва задължителна колона '{col}' във файла.")
             return None
 
-    # <<< НОВО: РЕШЕНИЕ ЗА FutureWarning >>>
     # Изрично задаваме типа на целевата колона като 'object' (за текст),
     # за да избегнем предупреждението за несъвместим тип данни.
     df[TARGET_METAFIELD_COLUMN] = df[TARGET_METAFIELD_COLUMN].astype(object)
@@ -172,19 +189,14 @@ def process_woocommerce_to_shopify(file_path):
     
     print() 
     
-    # <<< ПРОМЯНА 2: ТОВА Е НОВАТА ИНДИКАЦИЯ >>>
     print("\nОбработката на редовете приключи. Започва запис на новия Excel файл...")
     print("Тази стъпка може да отнеме известно време, моля изчакайте...")
 
-    # Диагностичен доклад
     output_path = file_path.replace('.xlsx', '_updated.xlsx')
     df.to_excel(output_path, index=False, sheet_name='Products', engine='xlsxwriter')
     
     print("\n" + "="*50)
     print("ОБРАБОТАТА ПРИКЛЮЧИ - ДИАГНОСТИЧЕН ДОКЛАД")
-    # ... останалата част от кода...
-
-# ... (кодът продължава без промяна)
     print("="*50)
     print(f"Общо намерени редове с данни в 'Metafield: woo.woobt_ids': {rows_with_data_count}")
     print(f"Успешно обновени редове в '{TARGET_METAFIELD_COLUMN}': {updated_count}")
