@@ -5,6 +5,58 @@ import re
 import os
 import sys
 
+# --- НОВО: СПИСЪК С ТИПОВЕ ПРОДУКТИ ---
+# Този списък ще се използва за попълване на колоната 'Type'
+PRODUCT_TYPES = [
+  "Комплект", "Медальон", "Обеци", "Асиметрични обеци", "Брошка /медальон",
+  "Брошка", "Брошка/медальон", "Ваучер за подарък", "Годежен сребърен пръстен",
+  "Голяма луксозна кутия", "Голяма подаръчна торбичка", "Гривна", "Гривна за глезен",
+  "Гривна за глезен monette", "Гривна снежинка", "Детска златна гривна",
+  "Детска сребърна гривна", "Детски сребърни обеци", "Елегантна сребърна гривна",
+  "Заключващи се винтчета за обеци", "Златен годежен пръстен", "Златен кръст",
+  "Златен пръстен", "Златен синджир", "Златна гривна", "Златни обеци",
+  "Златни обеци с диаманти", "Златно колие", "Златно колие с диаманти", "Картичка",
+  "Колие", "Колие със султанит", "Комплект гривни", "Комплект с яспис",
+  "Комплект със султанит", "Кръст", "Кутия за бижута", "Луксозна кутия за комплект",
+  "Малка луксозна кутия", "Малка подаръчна торбичка", "Медальон камея",
+  "Медальон лунен камък", "Медальон/брошка", "Медальон/брошка mapple leaf",
+  "Обеци пчели", "Обеци халки", "Обеци халки angel whisper", "Подаръчна торбичка",
+  "Пръстен", "Пръстен лунен камък", "Пръстен с лунен камък", "Пръстен султанит",
+  "Пръстен танзанит", "Романтично сребърно колие", "Сребърен годежен пръстен с брилянт",
+  "Сребърен двоен пръстен", "Сребърен компкект", "Сребърен комплект",
+  "Сребърен комплект dorian", "Сребърен комплект снежинки", "Сребърен комплект султанит",
+  "Сребърен кръст", "Сребърен кръст с брилянт", "Сребърен кръст с позлата и брилянт",
+  "Сребърен медальон", "Сребърен медальон angel heart", "Сребърен медальон ангел",
+  "Сребърен медальон ключ", "Сребърен медальон корона", "Сребърен медальон майка",
+  "Сребърен медальон с брилянт", "Сребърен медальон фея", "Сребърен медальон/брошка",
+  "Сребърен православен руски кръст", "Сребърен пръстен", "Сребърен пръстен meteorite",
+  "Сребърен пръстен за фаланга", "Сребърен пръстен змия", "Сребърен пръстен марказит",
+  "Сребърен пръстен оникс", "Сребърен пръстен с брилянт", "Сребърен пръстен с гранат",
+  "Сребърен пръстен с изумруд", "Сребърен пръстен с родиево покритие и цирконий",
+  "Сребърен пръстен самолет", "Сребърен пръстен султанит", "Сребърен пръстен часовник",
+  "Сребърен сгъваем пръстен", "Сребърен синджир", "Сребърен синджир кардинал",
+  "Сребърен часовник", "Сребърна брошка", "Сребърна брошка / медальон",
+  "Сребърна брошка/пин", "Сребърна виличка", "Сребърна гривна",
+  "Сребърна гривна за глезен", "Сребърна гривна с брилянт", "Сребърна гривнаm",
+  "Сребърна камбанка", "Сребърна лъжичка", "Сребърна обеца", "Сребърна твърда гривна",
+  "Сребърна чаша", "Сребърни обеци", "Сребърни обеци moon dance",
+  "Сребърни обеци звезди", "Сребърни обеци капка", "Сребърни обеци керамика",
+  "Сребърни обеци корона", "Сребърни обеци марказит", "Сребърни обеци панделки",
+  "Сребърни обеци планети", "Сребърни обеци пчели", "Сребърни обеци с брилянт",
+  "Сребърни обеци с брилянти", "Сребърни обеци с диаманти", "Сребърни обеци с корал",
+  "Сребърни обеци с перла", "Сребърни обеци с перли", "Сребърни обеци с рубин",
+  "Сребърни обеци с топаз", "Сребърни обеци сърца", "Сребърни обеци топчета",
+  "Сребърни обеци фиба", "Сребърни обеци халки", "Сребърни обеци – white jasmine s",
+  "Сребърно двойно колие", "Сребърно коли", "Сребърно колие", "Сребърно колие ангел",
+  "Сребърно колие ангелско крило", "Сребърно колие детелина", "Сребърно колие дървото на живота",
+  "Сребърно колие еленче", "Сребърно колие звезда", "Сребърно колие капчица",
+  "Сребърно колие ключ", "Сребърно колие краче", "Сребърно колие мече",
+  "Сребърно колие перо", "Сребърно колие пчела", "Сребърно колие ръката на фатима",
+  "Сребърно колие с брилянт", "Сребърно колие с брилянт – my little girl",
+  "Сребърно колие снежинка", "Сребърно колие сърца", "Сребърно колие сърце",
+  "Твърда сребърна гривна", "Тройно сребърно колие"
+]
+
 # Глобална променлива за името на целевата колона
 TARGET_METAFIELD_COLUMN = 'Metafield: global.Combined handle'
 
@@ -17,50 +69,76 @@ def process_woocommerce_to_shopify(file_path):
         return None
     
     try:
-        # Потискаме предупреждението от openpyxl при четене
         df = pd.read_excel(file_path, sheet_name='Products', engine='openpyxl')
         print(f"Файлът '{file_path}' е прочетен успешно. Общо редове: {len(df)}")
     except Exception as e:
         print(f"ГРЕШКА при четене на Excel файла: {e}")
         return None
     
-    # --- ПРОМЯНА 1: СЪЗДАВАНЕ НА ЦЕЛЕВАТА КОЛОНА, АКО ЛИПСВА ---
-    # Проверяваме дали целевата колона съществува. Ако не, я създаваме
-    # на правилната позиция - преди 'Metafield: woo.woobt_ids'.
+    # --- СЪЗДАВАНЕ НА КОЛОНА 'Metafield: global.Combined handle' ---
     if TARGET_METAFIELD_COLUMN not in df.columns:
         print(f"Забележка: Целевата колона '{TARGET_METAFIELD_COLUMN}' липсва. Тя ще бъде създадена автоматично.")
         try:
-            # Намираме индекса на колоната, преди която искаме да вмъкнем новата
             reference_col_index = df.columns.get_loc('Metafield: woo.woobt_ids')
-            # Вмъкваме новата празна колона на намерената позиция
             df.insert(loc=reference_col_index, column=TARGET_METAFIELD_COLUMN, value='')
-            print(f"-> Колоната е успешно създадена на позиция {reference_col_index}.")
+            print(f"-> Колоната '{TARGET_METAFIELD_COLUMN}' е успешно създадена.")
         except KeyError:
-            print(f"ГРЕШКА: Референтната колона 'Metafield: woo.woobt_ids' не е намерена, за да се добави новата колона.")
+            print(f"ГРЕШКА: Референтната колона 'Metafield: woo.woobt_ids' не е намерена.")
             return None
-    # --- КРАЙ НА ПРОМЯНА 1 ---
+    
+    # --- НОВО: СЪЗДАВАНЕ НА КОЛОНА 'Type' ---
+    if 'Type' not in df.columns:
+        print(f"Забележка: Целевата колона 'Type' липсва. Тя ще бъде създадена автоматично.")
+        try:
+            # Вмъкваме я веднага след колоната 'Title'
+            title_col_index = df.columns.get_loc('Title')
+            df.insert(loc=title_col_index + 1, column='Type', value='')
+            print(f"-> Колоната 'Type' е успешно създадена след 'Title'.")
+        except KeyError:
+            print(f"ГРЕШКА: Задължителната колона 'Title' не е намерена, за да се добави колона 'Type'.")
+            return None
 
-    # Проверяваме дали всички останали задължителни колони съществуват.
-    # Целевата колона вече е гарантирано налична, затова можем да я включим в проверката.
+    # Проверка за всички задължителни колони
     required_columns = [
         'Metafield: woo.woobt_ids', 'Variant SKU', 'Handle', 
-        TARGET_METAFIELD_COLUMN, 'Metafield: woo.id', 'Variant Metafield: woo.id'
+        TARGET_METAFIELD_COLUMN, 'Metafield: woo.id', 'Variant Metafield: woo.id',
+        'Title' # Добавяме и Title като задължителна
     ]
     for col in required_columns:
         if col not in df.columns:
             print(f"ГРЕШКА: Липсва задължителна колона '{col}' във файла.")
             return None
 
-    # Изрично задаваме типа на целевата колона като 'object' (за текст),
-    # за да избегнем предупреждението за несъвместим тип данни.
     df[TARGET_METAFIELD_COLUMN] = df[TARGET_METAFIELD_COLUMN].astype(object)
 
+    # --- НОВО: ЛОГИКА ЗА ПОПЪЛВАНЕ НА КОЛОНА 'Type' ---
+    print("\nЗапочва попълване на колона 'Type' на базата на 'Title'...")
+    
+    # Сортираме типовете по дължина (от най-дългия към най-късия), за да хванем най-точното съвпадение
+    sorted_types = sorted(PRODUCT_TYPES, key=len, reverse=True)
+    types_added_count = 0
+
+    for idx, row in df.iterrows():
+        title = str(row['Title']).strip()
+        if not title:
+            continue
+        
+        for product_type in sorted_types:
+            # Проверяваме дали заглавието започва с някой от типовете
+            if title.startswith(product_type):
+                df.at[idx, 'Type'] = product_type
+                types_added_count += 1
+                break # Прекъсваме, защото сме намерили най-дългото възможно съвпадение
+
+    print(f"-> Попълването приключи. Добавени са {types_added_count} типа в колона 'Type'.")
+
+
+    # --- СЪЩЕСТВУВАЩА ЛОГИКА ЗА 'Combined handle' ---
     sku_to_handle = {}
     woo_id_to_handle = {}
     last_valid_handle = '' 
 
-    print("\nЗапочва създаване на речници за търсене...")
-    # ... (останалата част от кода остава НАПЪЛНО НЕПРОМЕНЕНА) ...
+    print("\nЗапочва създаване на речници за търсене за 'Combined handle'...")
     for idx, row in df.iterrows():
         if pd.notna(row['Handle']) and str(row['Handle']).strip() != '':
             last_valid_handle = str(row['Handle']).strip()
@@ -87,24 +165,21 @@ def process_woocommerce_to_shopify(file_path):
             try:
                 id_str = str(int(float(id_to_process)))
                 woo_id_to_handle[id_str] = last_valid_handle
-                
-                if id_str in DEBUG_ITEMS:
-                    print(f"[ДЕБЪГ | РЕЧНИК] ID '{id_str}' е асоцииран с Handle: '{last_valid_handle}' (от ред {idx + 2})")
             except (ValueError, TypeError):
                 continue
 
     print(f"-> Създаден е речник с {len(sku_to_handle)} уникални SKU-та.")
-    print(f"-> Създаден е речник с {len(woo_id_to_handle)} уникални Woo ID-та (от двата източника).")
+    print(f"-> Създаден е речник с {len(woo_id_to_handle)} уникални Woo ID-та.")
 
     rows_with_woobt_data = df['Metafield: woo.woobt_ids'].notna().sum()
-    print(f"--> Намерени са общо {rows_with_woobt_data} реда с данни в 'Metafield: woo.woobt_ids', които ще бъдат обработени.")
+    print(f"--> Намерени са {rows_with_woobt_data} реда с данни в 'Metafield: woo.woobt_ids', които ще бъдат обработени.")
     
     updated_count = 0
     rows_with_data_count = 0
     json_parse_errors = []
     unmatched_products = []
 
-    print("\nЗапочва обработка на редовете...")
+    print("\nЗапочва обработка на 'Combined handle'...")
     for idx, row in df.iterrows():
         woobt_ids = row['Metafield: woo.woobt_ids']
         
@@ -112,7 +187,6 @@ def process_woocommerce_to_shopify(file_path):
             continue
             
         rows_with_data_count += 1
-        
         print(f"Обработване на ред {rows_with_data_count} от {rows_with_woobt_data}...", end='\r')
         sys.stdout.flush()
         
@@ -154,26 +228,14 @@ def process_woocommerce_to_shopify(file_path):
                 product_id = product['id']
                 found_handle = None
                 
-                is_debug_target = sku in DEBUG_ITEMS or product_id in DEBUG_ITEMS
-                if is_debug_target:
-                    print("\n" + "-"*20 + f" ДЕБЪГ НА РЕД {excel_row_num} " + "-"*20)
-                    print(f"Търси се -> SKU: '{sku}', ID: '{product_id}'")
-                
                 if sku and sku in sku_to_handle:
                     found_handle = sku_to_handle[sku]
-                    if is_debug_target: print(f"  [OK] Намерен по SKU. Handle: '{found_handle}'")
                 elif product_id and product_id in woo_id_to_handle:
                     found_handle = woo_id_to_handle[product_id]
-                    if is_debug_target: print(f"  [OK] Намерен по ID. Handle: '{found_handle}'")
                 
                 if found_handle:
                     matching_handles.append(found_handle)
                 else:
-                    if is_debug_target: 
-                        print(f"  [ГРЕШКА] Продуктът не е намерен нито по SKU, нито по ID.")
-                        print(f"    -> Проверка за SKU '{sku}' в речника: {sku in sku_to_handle}")
-                        print(f"    -> Проверка за ID '{product_id}' в речника: {product_id in woo_id_to_handle}")
-                        print("-" * (44 + len(str(excel_row_num))))
                     row_unmatched_products.append(f"SKU: '{sku}'/ID: '{product_id}'")
 
             if row_unmatched_products:
@@ -188,7 +250,6 @@ def process_woocommerce_to_shopify(file_path):
             continue
     
     print() 
-    
     print("\nОбработката на редовете приключи. Започва запис на новия Excel файл...")
     print("Тази стъпка може да отнеме известно време, моля изчакайте...")
 
@@ -198,6 +259,8 @@ def process_woocommerce_to_shopify(file_path):
     print("\n" + "="*50)
     print("ОБРАБОТАТА ПРИКЛЮЧИ - ДИАГНОСТИЧЕН ДОКЛАД")
     print("="*50)
+    print(f"Успешно добавени типове в колона 'Type': {types_added_count}")
+    print("-" * 50)
     print(f"Общо намерени редове с данни в 'Metafield: woo.woobt_ids': {rows_with_data_count}")
     print(f"Успешно обновени редове в '{TARGET_METAFIELD_COLUMN}': {updated_count}")
     print(f"Редове с грешка при разчитане на JSON данните: {len(json_parse_errors)}")
