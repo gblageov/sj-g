@@ -1,6 +1,7 @@
 import os
 import sys
 import pandas as pd
+from typing import Tuple
 from .constants import TARGET_METAFIELD_COLUMN, COLUMN_RENAMES
 
 
@@ -83,6 +84,30 @@ def read_products_df(file_path: str):
     df[TARGET_METAFIELD_COLUMN] = df[TARGET_METAFIELD_COLUMN].astype(object)
 
     return df
+
+
+def remove_xts_blocks_columns(df: pd.DataFrame) -> Tuple[pd.DataFrame, int]:
+    """
+    Removes all columns containing 'Metafield: woo.xts-blocks' in their names.
+    
+    Args:
+        df: Input DataFrame
+        
+    Returns:
+        Tuple containing:
+        - DataFrame with columns removed
+        - Number of columns that were removed
+    """
+    # Find all columns containing 'Metafield: woo.xts-blocks' in their names
+    columns_to_remove = [col for col in df.columns if 'Metafield: woo.xts-blocks' in str(col)]
+    
+    if not columns_to_remove:
+        return df, 0
+        
+    # Remove the columns
+    df = df.drop(columns=columns_to_remove)
+    
+    return df, len(columns_to_remove)
 
 
 def write_products_df(df: pd.DataFrame, output_path: str):

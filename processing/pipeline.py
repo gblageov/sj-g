@@ -29,6 +29,14 @@ def process_woocommerce_to_shopify(file_path: str, output_file: str = None) -> O
     df = io_mod.read_products_df(file_path)
     if df is None:
         return None
+        
+    # Remove columns containing 'Metafield: woo.xts-blocks' in their names
+    print("\nПремахване на колони, съдържащи 'Metafield: woo.xts-blocks'...")
+    df, removed_count = io_mod.remove_xts_blocks_columns(df)
+    if removed_count > 0:
+        print(f"-> Премахнати са {removed_count} колони, съдържащи 'Metafield: woo.xts-blocks' в името.")
+    else:
+        print("-> Не са намерени колони за премахване, съдържащи 'Metafield: woo.xts-blocks' в името.")
 
     # Populate 'Type'
     print("\nЗапочва попълване на колона 'Type' (търсене на най-пълно съвпадение)...")
