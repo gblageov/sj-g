@@ -27,6 +27,22 @@ def process_woocommerce_to_shopify(file_path: str) -> Optional[str]:
     types_added_count = populate_type_column(df, PRODUCT_TYPES)
     print(f"-> Попълването приключи. Добавени са {types_added_count} типа в колона 'Type'.")
 
+    # Diagnostic: Report products without Type
+    rows_without_type = []
+    for idx, row in df.iterrows():
+        if not row.get('Type') or pd.isna(row.get('Type')):
+            title = row.get('Title', '')
+            rows_without_type.append((idx + 2, title))  # +2 for Excel row (0-indexed idx + header row)
+
+    if rows_without_type:
+        print("\nДИАГНОСТИКА: ПРОДУКТИ БЕЗ ТИП")
+        print("-" * 50)
+        print(f"Намерени са {len(rows_without_type)} продукти без попълнен тип:")
+        for row_num, title in rows_without_type:
+            print(f"  Ред {row_num}: {title}")
+    else:
+        print("\n-> Всички продукти имат попълнен тип.")
+
     # Build lookup maps for Combined handle
     print("\nЗапочва създаване на речници за търсене за 'Combined handle'...")
     sku_to_handle = build_sku_to_handle(df)
