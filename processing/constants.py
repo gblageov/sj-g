@@ -1,5 +1,5 @@
 PRODUCT_TYPES = [
-  "Комплект", "Медальон", "Обеци", "Асиметрични обеци", "Брошка /медальон",
+  "Комплект", "Медальон", "Oбеци", "Асиметрични обеци", "Брошка /медальон",
   "Брошка", "Брошка/медальон", "Ваучер за подарък", "Годежен сребърен пръстен",
   "Голяма луксозна кутия", "Голяма подаръчна торбичка", "Гривна", "Гривна за глезен",
   "Гривна за глезен monette", "Гривна снежинка", "Детска златна гривна",
@@ -45,7 +45,20 @@ PRODUCT_TYPES = [
   "Сребърно колие перо", "Сребърно колие пчела", "Сребърно колие ръката на фатима",
   "Сребърно колие с брилянт", "Сребърно колие с брилянт – my little girl",
   "Сребърно колие снежинка", "Сребърно колие сърца", "Сребърно колие сърце",
-  "Твърда сребърна гривна", "Тройно сребърно колие"
+  "Твърда сребърна гривна", "Тройно сребърно колие", "Сребърен  православен руски кръст", "Kомплект"
 ]
 
 TARGET_METAFIELD_COLUMN = 'Metafield: global.Combined handle'
+
+# Column rename mapping: Bulgarian attribute names -> English equivalents
+COLUMN_RENAMES = {
+  'Metafield: woo_attribute.Дължина': 'Metafield: woo_attribute.Length',
+  'Metafield: woo_attribute.Вид': 'Metafield: woo_attribute.Type',
+  'Metafield: woo_attribute.Размер на пръстена': 'Metafield: woo_attribute.Ring_size',
+  'Metafield: woo_attribute.Материал': 'Metafield: woo_attribute.Material',
+  'Metafield: woo_attribute.Плетка': 'Metafield: woo_attribute.Knit',
+  'Metafield: woo_attribute.Форма': 'Metafield: woo_attribute.Form',
+  'Metafield: woo_attribute.Колекция': 'Metafield: woo_attribute.Collection',
+  'Metafield: woo_attribute.Закопчаване': 'Metafield: woo_attribute.Fastening',
+  'Metafield: woo_attribute.Камък': 'Metafield: woo_attribute.Stone',
+}

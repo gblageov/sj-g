@@ -1,7 +1,7 @@
 import os
 import sys
 import pandas as pd
-from .constants import TARGET_METAFIELD_COLUMN
+from .constants import TARGET_METAFIELD_COLUMN, COLUMN_RENAMES
 
 
 def read_products_df(file_path: str):
@@ -19,6 +19,31 @@ def read_products_df(file_path: str):
     except Exception as e:
         print(f"ГРЕШКА при четене на Excel файла: {e}")
         return None
+
+    # Apply column renames (Bulgarian -> English) where applicable
+    # Only rename when the old name exists and the target name does not already exist to avoid collisions
+    renames_to_apply = {}
+    for old, new in COLUMN_RENAMES.items():
+        if old in df.columns and new not in df.columns:
+            renames_to_apply[old] = new
+    if renames_to_apply:
+        df.rename(columns=renames_to_apply, inplace=True)
+
+    # Normalize engraving enable column values: 'yes' -> 'True', 'no' -> 'False' (as text)
+    # Handle possible column naming variants (with/without 'Metafield: ' prefix)
+    engrave_candidates = [
+        c for c in df.columns
+        if c.strip() == 'Metafield: woo.bgfd_enable_product_engraving' or c.strip().endswith('Metafield: woo.bgfd_enable_product_engraving')
+    ]
+    for engrave_col in engrave_candidates:
+        def _normalize_engrave(v):
+            s = '' if pd.isna(v) else str(v).strip().lower()
+            if s == 'yes':
+                return 'True'
+            if s == 'no':
+                return 'False'
+            return v
+        df[engrave_col] = df[engrave_col].apply(_normalize_engrave).astype(object)
 
     # Ensure Combined handle column exists at correct position (before woo.woobt_ids)
     if TARGET_METAFIELD_COLUMN not in df.columns:
@@ -41,6 +66,8 @@ def read_products_df(file_path: str):
         except KeyError:
             print(f"ГРЕШКА: Задължителната колона 'Title' не е намерена, за да се добави колона 'Type'.")
             return None
+    # Ensure dtype for 'Type' is object to avoid FutureWarning when setting strings
+    df['Type'] = df['Type'].astype(object)
 
     # Required columns check (must mirror current implementation)
     required_columns = [
