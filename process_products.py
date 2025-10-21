@@ -1,4 +1,6 @@
 import pandas as pd
+import os
+from datetime import datetime
 import json
 import ast
 import re
@@ -192,7 +194,10 @@ def process_woocommerce_to_shopify(file_path):
     print("\nОбработката на редовете приключи. Започва запис на новия Excel файл...")
     print("Тази стъпка може да отнеме известно време, моля изчакайте...")
 
-    output_path = file_path.replace('.xlsx', '_updated.xlsx')
+    # output_path = file_path.replace('.xlsx', '_updated.xlsx')
+    base, ext = os.path.splitext(file_path)
+    ts = datetime.now().strftime('%Y%m%d-%H%M')
+    output_path = f"{base}_updated_{ts}{ext if ext else '.xlsx'}"
     df.to_excel(output_path, index=False, sheet_name='Products', engine='xlsxwriter')
     
     print("\n" + "="*50)
