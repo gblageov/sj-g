@@ -140,4 +140,5 @@ dmypy.json
 # Ignore compiled wheel files
 *.whl
 
+# Ignore Excel workbook files
 *.xlsx
