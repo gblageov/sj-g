@@ -139,3 +139,5 @@ dmypy.json
 
 # Ignore compiled wheel files
 *.whl
+
+*.xlsx
