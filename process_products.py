@@ -5,8 +5,7 @@ import re
 import os
 import sys
 
-# --- НОВО: СПИСЪК С ТИПОВЕ ПРОДУКТИ ---
-# Този списък ще се използва за попълване на колоната 'Type'
+# СПИСЪК С ТИПОВЕ ПРОДУКТИ
 PRODUCT_TYPES = [
   "Комплект", "Медальон", "Обеци", "Асиметрични обеци", "Брошка /медальон",
   "Брошка", "Брошка/медальон", "Ваучер за подарък", "Годежен сребърен пръстен",
@@ -86,11 +85,10 @@ def process_woocommerce_to_shopify(file_path):
             print(f"ГРЕШКА: Референтната колона 'Metafield: woo.woobt_ids' не е намерена.")
             return None
     
-    # --- НОВО: СЪЗДАВАНЕ НА КОЛОНА 'Type' ---
+    # --- СЪЗДАВАНЕ НА КОЛОНА 'Type' ---
     if 'Type' not in df.columns:
         print(f"Забележка: Целевата колона 'Type' липсва. Тя ще бъде създадена автоматично.")
         try:
-            # Вмъкваме я веднага след колоната 'Title'
             title_col_index = df.columns.get_loc('Title')
             df.insert(loc=title_col_index + 1, column='Type', value='')
             print(f"-> Колоната 'Type' е успешно създадена след 'Title'.")
@@ -101,8 +99,7 @@ def process_woocommerce_to_shopify(file_path):
     # Проверка за всички задължителни колони
     required_columns = [
         'Metafield: woo.woobt_ids', 'Variant SKU', 'Handle', 
-        TARGET_METAFIELD_COLUMN, 'Metafield: woo.id', 'Variant Metafield: woo.id',
-        'Title' # Добавяме и Title като задължителна
+        TARGET_METAFIELD_COLUMN, 'Metafield: woo.id', 'Variant Metafield: woo.id', 'Title'
     ]
     for col in required_columns:
         if col not in df.columns:
@@ -111,11 +108,8 @@ def process_woocommerce_to_shopify(file_path):
 
     df[TARGET_METAFIELD_COLUMN] = df[TARGET_METAFIELD_COLUMN].astype(object)
 
-    # --- НОВО: ЛОГИКА ЗА ПОПЪЛВАНЕ НА КОЛОНА 'Type' ---
-    print("\nЗапочва попълване на колона 'Type' на базата на 'Title'...")
-    
-    # Сортираме типовете по дължина (от най-дългия към най-късия), за да хванем най-точното съвпадение
-    sorted_types = sorted(PRODUCT_TYPES, key=len, reverse=True)
+    # --- КОРЕГИРАНА ЛОГИКА ЗА ПОПЪЛВАНЕ НА КОЛОНА 'Type' ---
+    print("\nЗапочва попълване на колона 'Type' (търсене на най-пълно съвпадение)...")
     types_added_count = 0
 
     for idx, row in df.iterrows():
@@ -123,15 +117,23 @@ def process_woocommerce_to_shopify(file_path):
         if not title:
             continue
         
-        for product_type in sorted_types:
-            # Проверяваме дали заглавието започва с някой от типовете
-            if title.startswith(product_type):
-                df.at[idx, 'Type'] = product_type
-                types_added_count += 1
-                break # Прекъсваме, защото сме намерили най-дългото възможно съвпадение
+        # Преобразуваме заглавието в малки букви веднъж за ефективност
+        title_lower = title.lower()
+        
+        found_matches = []
+        # Обхождаме всички типове, за да намерим всички възможни съвпадения
+        for product_type in PRODUCT_TYPES:
+            # Сравняваме с малки букви, за да игнорираме регистъра
+            if title_lower.startswith(product_type.lower()):
+                found_matches.append(product_type)
+        
+        # Ако сме намерили поне едно съвпадение, избираме най-дългото от тях
+        if found_matches:
+            best_match = max(found_matches, key=len)
+            df.at[idx, 'Type'] = best_match
+            types_added_count += 1
 
     print(f"-> Попълването приключи. Добавени са {types_added_count} типа в колона 'Type'.")
-
 
     # --- СЪЩЕСТВУВАЩА ЛОГИКА ЗА 'Combined handle' ---
     sku_to_handle = {}
@@ -142,31 +144,15 @@ def process_woocommerce_to_shopify(file_path):
     for idx, row in df.iterrows():
         if pd.notna(row['Handle']) and str(row['Handle']).strip() != '':
             last_valid_handle = str(row['Handle']).strip()
-
-        if not last_valid_handle:
-            continue
-
+        if not last_valid_handle: continue
         variant_sku = row['Variant SKU']
         if pd.notna(variant_sku) and str(variant_sku).strip() != '':
-            sku_str = str(variant_sku).strip()
-            sku_to_handle[sku_str] = last_valid_handle
-
-        id_to_process = None
-        main_woo_id = row['Metafield: woo.id']
-        
-        if pd.notna(main_woo_id) and str(main_woo_id).strip() != '':
-            id_to_process = main_woo_id
-        else:
-            variant_woo_id = row['Variant Metafield: woo.id']
-            if pd.notna(variant_woo_id) and str(variant_woo_id).strip() != '':
-                id_to_process = variant_woo_id
-        
-        if id_to_process:
+            sku_to_handle[str(variant_sku).strip()] = last_valid_handle
+        id_to_process = row['Metafield: woo.id'] if pd.notna(row['Metafield: woo.id']) and str(row['Metafield: woo.id']).strip() != '' else row['Variant Metafield: woo.id']
+        if pd.notna(id_to_process) and str(id_to_process).strip() != '':
             try:
-                id_str = str(int(float(id_to_process)))
-                woo_id_to_handle[id_str] = last_valid_handle
-            except (ValueError, TypeError):
-                continue
+                woo_id_to_handle[str(int(float(id_to_process)))] = last_valid_handle
+            except (ValueError, TypeError): continue
 
     print(f"-> Създаден е речник с {len(sku_to_handle)} уникални SKU-та.")
     print(f"-> Създаден е речник с {len(woo_id_to_handle)} уникални Woo ID-та.")
@@ -174,80 +160,33 @@ def process_woocommerce_to_shopify(file_path):
     rows_with_woobt_data = df['Metafield: woo.woobt_ids'].notna().sum()
     print(f"--> Намерени са {rows_with_woobt_data} реда с данни в 'Metafield: woo.woobt_ids', които ще бъдат обработени.")
     
-    updated_count = 0
-    rows_with_data_count = 0
-    json_parse_errors = []
-    unmatched_products = []
+    updated_count = 0; rows_with_data_count = 0; json_parse_errors = []; unmatched_products = []
 
     print("\nЗапочва обработка на 'Combined handle'...")
     for idx, row in df.iterrows():
         woobt_ids = row['Metafield: woo.woobt_ids']
-        
-        if pd.isna(woobt_ids) or str(woobt_ids).strip() == '':
-            continue
-            
+        if pd.isna(woobt_ids) or str(woobt_ids).strip() == '': continue
         rows_with_data_count += 1
-        print(f"Обработване на ред {rows_with_data_count} от {rows_with_woobt_data}...", end='\r')
-        sys.stdout.flush()
-        
+        print(f"Обработване на ред {rows_with_data_count} от {rows_with_woobt_data}...", end='\r'); sys.stdout.flush()
         excel_row_num = idx + 2
-        
         try:
-            woobt_str = str(woobt_ids)
-            woobt_str = re.sub(r'^[^{]*({.*})[^}]*$', r'\1', woobt_str)
-            
-            woobt_data = None
-            try:
-                woobt_data = json.loads(woobt_str)
+            woobt_str = re.sub(r'^[^{]*({.*})[^}]*$', r'\1', str(woobt_ids))
+            try: woobt_data = json.loads(woobt_str)
             except:
-                try:
-                    woobt_data = ast.literal_eval(woobt_str)
-                except:
-                    json_parse_errors.append(f"Ред {excel_row_num}: Неуспешно разчитане на JSON -> '{woobt_str}'")
-                    continue
-            
-            if not isinstance(woobt_data, dict):
-                continue
-
-            products_data = []
-            for key in woobt_data:
-                if isinstance(woobt_data[key], dict):
-                    products_data.append({
-                        'sku': str(woobt_data[key].get('sku', '')).strip(),
-                        'id': str(woobt_data[key].get('id', '')).strip()
-                    })
-            
-            if not products_data:
-                continue
-
-            matching_handles = []
-            row_unmatched_products = []
-            
+                try: woobt_data = ast.literal_eval(woobt_str)
+                except: json_parse_errors.append(f"Ред {excel_row_num}: Неуспешно разчитане на JSON -> '{woobt_str}'"); continue
+            if not isinstance(woobt_data, dict): continue
+            products_data = [{'sku': str(v.get('sku', '')).strip(), 'id': str(v.get('id', '')).strip()} for k, v in woobt_data.items() if isinstance(v, dict)]
+            if not products_data: continue
+            matching_handles = []; row_unmatched_products = []
             for product in products_data:
-                sku = product['sku']
-                product_id = product['id']
-                found_handle = None
-                
-                if sku and sku in sku_to_handle:
-                    found_handle = sku_to_handle[sku]
-                elif product_id and product_id in woo_id_to_handle:
-                    found_handle = woo_id_to_handle[product_id]
-                
-                if found_handle:
-                    matching_handles.append(found_handle)
-                else:
-                    row_unmatched_products.append(f"SKU: '{sku}'/ID: '{product_id}'")
-
-            if row_unmatched_products:
-                unmatched_products.append(f"Ред {excel_row_num}: Не са намерени съвпадения за -> {', '.join(row_unmatched_products)}")
-
-            if matching_handles:
-                df.at[idx, TARGET_METAFIELD_COLUMN] = ','.join(list(set(matching_handles)))
-                updated_count += 1
-                
-        except Exception as e:
-            print(f"Критична грешка при обработка на ред {excel_row_num}: {e}")
-            continue
+                sku, product_id = product['sku'], product['id']
+                found_handle = sku_to_handle.get(sku) or woo_id_to_handle.get(product_id)
+                if found_handle: matching_handles.append(found_handle)
+                else: row_unmatched_products.append(f"SKU: '{sku}'/ID: '{product_id}'")
+            if row_unmatched_products: unmatched_products.append(f"Ред {excel_row_num}: Не са намерени съвпадения за -> {', '.join(row_unmatched_products)}")
+            if matching_handles: df.at[idx, TARGET_METAFIELD_COLUMN] = ','.join(list(set(matching_handles))); updated_count += 1
+        except Exception as e: print(f"Критична грешка при обработка на ред {excel_row_num}: {e}"); continue
     
     print() 
     print("\nОбработката на редовете приключи. Започва запис на новия Excel файл...")
@@ -269,8 +208,7 @@ def process_woocommerce_to_shopify(file_path):
 
     if unmatched_products:
         print("\nПЪЛЕН СПИСЪК НА НЕНАМЕРЕНИТЕ ПРОДУКТИ:")
-        for error in unmatched_products:
-            print(error)
+        for error in unmatched_products: print(error)
             
     print(f"\nОбновеният файл е запазен като: {output_path}")
     print("="*50)
