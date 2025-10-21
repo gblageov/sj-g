@@ -142,3 +142,7 @@ dmypy.json
 
 # Ignore Excel workbook files
 *.xlsx
+
+# Ignore output files
+*.output_*.xlsx
+*.output_*.txt
