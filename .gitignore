@@ -146,3 +146,5 @@ dmypy.json
 # Ignore output files
 *.output_*.xlsx
 *.output_*.txt
+
+*.txt

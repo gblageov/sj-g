@@ -13,11 +13,19 @@ from .parsing import extract_woobt_dict
 from .report import print_summary_report
 
 
-def process_woocommerce_to_shopify(file_path: str) -> Optional[str]:
+def process_woocommerce_to_shopify(file_path: str, output_file: str = None) -> Optional[str]:
     """
     Orchestrates the processing pipeline equivalent to the original implementation.
-    Returns the output file path on success, or None on error.
+    
+    Args:
+        file_path: Path to the input Excel file
+        output_file: Optional path for the output Excel file. If not provided, will use
+                   the input filename with '_output' suffix.
+                   
+    Returns:
+        str: Path to the output file on success, None on error
     """
+    # Read the input file
     df = io_mod.read_products_df(file_path)
     if df is None:
         return None
@@ -65,8 +73,10 @@ def process_woocommerce_to_shopify(file_path: str) -> Optional[str]:
             continue
 
         rows_with_data_count += 1
-        print(f"Обработване на ред {rows_with_data_count} от {rows_with_woobt_data}...", end='\r')
-        sys.stdout.flush()
+        # Show progress every 100 rows to improve performance
+        if rows_with_data_count % 100 == 0 or rows_with_data_count == rows_with_woobt_data:
+            print(f"Обработване на ред {rows_with_data_count} от {rows_with_woobt_data}...", end='\r')
+            sys.stdout.flush()
 
         excel_row_num = idx + 2
         try:
@@ -110,10 +120,20 @@ def process_woocommerce_to_shopify(file_path: str) -> Optional[str]:
             print(f"Критична грешка при обработка на ред {excel_row_num}: {e}")
             continue
 
-    base, ext = os.path.splitext(file_path)
-    ts = datetime.now().strftime('%Y%m%d-%H%M')
-    output_path = f"{base}_updated_{ts}{ext if ext else '.xlsx'}"
+    # Determine output file path if not provided
+    if output_file is None:
+        base_name = os.path.splitext(file_path)[0]
+        output_path = f"{base_name}_output.xlsx"
+    else:
+        output_path = output_file
+        
+    # Ensure the output directory exists
+    os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
+
+    # Save the final output
+    print(f"\nЗапис на резултатите в: {output_path}")
     io_mod.write_products_df(df, output_path)
+    print(f"-> Файлът е запазен успешно.")
 
     print_summary_report(
         types_added_count=types_added_count,
