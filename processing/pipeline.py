@@ -131,40 +131,60 @@ def process_woocommerce_to_shopify(file_path: str, output_file: str = None) -> O
     # Determine output file path if not provided
     if output_file is None:
         base, ext = os.path.splitext(file_path)
-        output_file = f"{base}_output{ext}"
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        output_file = f"{base}_output_{timestamp}{ext}"
 
     # Ensure the output directory exists
-    os.makedirs(os.path.dirname(os.path.abspath(output_file)), exist_ok=True)
+    output_dir = os.path.dirname(os.path.abspath(output_file))
+    os.makedirs(output_dir, exist_ok=True)
 
-    # Write the output file, preserving all sheets except 'prodct' and 'Products' from the original file
     print("\n" + "="*80)
-    print("ЗАПАЗВАНЕ НА ФАЙЛА СЪС ЗАПАЗВАНЕ НА ВСИЧКИ ЛИСТОВЕ (ОСВЕН 'prodct' И 'Products')")
+    print("ЗАПАЗВАНЕ НА ФАЙЛА СЪС ЗАПАЗВАНЕ НА ВСИЧКИ ЛИСТОВЕ (ОСВЕН 'prodct')")
     print("="*80)
     
-    # First, create a copy of all sheets except 'prodct' and 'Products' to a temporary file
-    temp_output = output_file.replace('.xlsx', '_other_sheets.xlsx')
-    other_sheets_copied = io_mod.copy_other_sheets(file_path, temp_output)
-    
-    if other_sheets_copied:
-        print(f"\nУспешно са копирани всички други листове в временен файл: {temp_output}")
-    
-    # Now write our main data to the final output file, including other sheets
+    # First write the main Products sheet
     print("\nЗапис на обработените данни в крайния файл...")
     
-    # Copy other sheets from the temporary file to the final output
-    if other_sheets_copied and os.path.exists(temp_output):
-        print(f"\nКопиране на другите листове в крайния файл...")
-        with pd.ExcelWriter(output_file, engine='openpyxl', mode='a', if_sheet_exists='overlay') as writer:
-            xls = pd.ExcelFile(temp_output, engine='openpyxl')
+    # Create a temporary file for the main data
+    temp_products = os.path.join(output_dir, f"temp_products_{os.urandom(4).hex()}.xlsx")
+    df.to_excel(temp_products, index=False, sheet_name='Products', engine='xlsxwriter')
+    
+    try:
+        # Now create the final output file with all sheets
+        with pd.ExcelWriter(output_file, engine='xlsxwriter') as writer:
+            # First write the processed Products sheet with exact name 'Products'
+            df.to_excel(writer, sheet_name='Products', index=False)
+            
+            # Then copy all other sheets from the original file except 'prodct' (case insensitive)
+            # and any sheet that might be a duplicate of 'Products' (case insensitive)
+            xls = pd.ExcelFile(file_path, engine='openpyxl')
+            sheets_copied = 0
+            
             for sheet_name in xls.sheet_names:
-                if sheet_name != 'Products':  # Double check to be safe
+                # Skip 'prodct' (case insensitive) and 'Products' (case insensitive)
+                lower_sheet_name = sheet_name.lower()
+                if lower_sheet_name != 'prodct' and lower_sheet_name != 'products':
                     print(f"  - Добавяне на лист: {sheet_name}")
-                    sheet_df = pd.read_excel(xls, sheet_name=sheet_name)
-                    sheet_df.to_excel(writer, sheet_name=sheet_name, index=False)
+                    try:
+                        sheet_df = pd.read_excel(xls, sheet_name=sheet_name)
+                        sheet_df.to_excel(writer, sheet_name=sheet_name, index=False)
+                        sheets_copied += 1
+                    except Exception as e:
+                        print(f"    Грешка при копиране на лист {sheet_name}: {str(e)}")
+            
+            # Ensure we don't have any duplicate 'Products' sheets (case insensitive)
+            if 'Products' not in writer.sheets:
+                # This should never happen as we write it first, but just in case
+                df.to_excel(writer, sheet_name='Products', index=False)
+            
+            print(f"\nУспешно са копирани {sheets_copied} допълнителни листа от оригиналния файл.")
         
+        print(f"\nФайлът е запазен успешно като: {output_file}")
+        
+    finally:
         # Clean up the temporary file
-        os.remove(temp_output)
-        print("Всички листове са копирани успешно.")
+        if os.path.exists(temp_products):
+            os.remove(temp_products)
     
     # Print summary report
     print_summary_report(
