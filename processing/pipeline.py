@@ -73,6 +73,7 @@ def process_woocommerce_to_shopify(file_path: str, output_file: str = None) -> O
     rows_with_data_count = 0
     json_parse_errors = []
     unmatched_products = []
+    updates_map = {}  # collect row updates and apply in bulk for speed
 
     print("\nЗапочва обработка на 'Combined handle'...")
     for idx, row in df.iterrows():
@@ -121,12 +122,16 @@ def process_woocommerce_to_shopify(file_path: str, output_file: str = None) -> O
                 )
 
             if matching_handles:
-                df.at[idx, TARGET_METAFIELD_COLUMN] = ','.join(list(set(matching_handles)))
+                updates_map[idx] = ','.join(list(set(matching_handles)))
                 updated_count += 1
 
         except Exception as e:
             print(f"Критична грешка при обработка на ред {excel_row_num}: {e}")
             continue
+
+    # Apply all updates in bulk for performance
+    if updates_map:
+        df.loc[list(updates_map.keys()), TARGET_METAFIELD_COLUMN] = list(updates_map.values())
 
     # Determine output file path if not provided
     if output_file is None:
@@ -139,61 +144,45 @@ def process_woocommerce_to_shopify(file_path: str, output_file: str = None) -> O
     os.makedirs(output_dir, exist_ok=True)
 
     print("\n" + "="*80)
-    print("ЗАПАЗВАНЕ НА ФАЙЛА СЪС ЗАПАЗВАНЕ НА ВСИЧКИ ЛИСТОВЕ (ОСВЕН 'prodct')")
+    print("ЗАПАЗВАНЕ НА ФАЙЛА СЪС ЗАПАЗВАНЕ НА ВСИЧКИ ЛИСТОВЕ (ОСВЕН 'Products')")
     print("="*80)
     
-    # First write the main Products sheet
     print("\nЗапис на обработените данни в крайния файл...")
     
-    # Create a temporary file for the main data
-    temp_products = os.path.join(output_dir, f"temp_products_{os.urandom(4).hex()}.xlsx")
-    df.to_excel(temp_products, index=False, sheet_name='Products', engine='xlsxwriter')
+    # Create the final output file with all sheets in one go
+    with pd.ExcelWriter(output_file, engine='xlsxwriter') as writer:
+        # First write the processed Products sheet with exact name 'Products'
+        df.to_excel(writer, sheet_name='Products', index=False)
+        
+        # Then copy all other sheets from the original file except 'prodct' (case insensitive)
+        # and any sheet that might be a duplicate of 'Products' (case insensitive)
+        xls = pd.ExcelFile(file_path, engine='openpyxl')
+        sheets_copied = 0
+        
+        for sheet_name in xls.sheet_names:
+            # Skip 'prodct' (case insensitive) and 'Products' (case insensitive)
+            lower_sheet_name = sheet_name.lower()
+            if lower_sheet_name != 'prodct' and lower_sheet_name != 'products':
+                print(f"  - Добавяне на лист: {sheet_name}")
+                try:
+                    sheet_df = pd.read_excel(xls, sheet_name=sheet_name)
+                    sheet_df.to_excel(writer, sheet_name=sheet_name, index=False)
+                    sheets_copied += 1
+                except Exception as e:
+                    print(f"    Грешка при копиране на лист {sheet_name}: {str(e)}")
+        
+        print(f"\nУспешно са копирани {sheets_copied} допълнителни листа от оригиналния файл.")
     
-    try:
-        # Now create the final output file with all sheets
-        with pd.ExcelWriter(output_file, engine='xlsxwriter') as writer:
-            # First write the processed Products sheet with exact name 'Products'
-            df.to_excel(writer, sheet_name='Products', index=False)
-            
-            # Then copy all other sheets from the original file except 'prodct' (case insensitive)
-            # and any sheet that might be a duplicate of 'Products' (case insensitive)
-            xls = pd.ExcelFile(file_path, engine='openpyxl')
-            sheets_copied = 0
-            
-            for sheet_name in xls.sheet_names:
-                # Skip 'prodct' (case insensitive) and 'Products' (case insensitive)
-                lower_sheet_name = sheet_name.lower()
-                if lower_sheet_name != 'prodct' and lower_sheet_name != 'products':
-                    print(f"  - Добавяне на лист: {sheet_name}")
-                    try:
-                        sheet_df = pd.read_excel(xls, sheet_name=sheet_name)
-                        sheet_df.to_excel(writer, sheet_name=sheet_name, index=False)
-                        sheets_copied += 1
-                    except Exception as e:
-                        print(f"    Грешка при копиране на лист {sheet_name}: {str(e)}")
-            
-            # Ensure we don't have any duplicate 'Products' sheets (case insensitive)
-            if 'Products' not in writer.sheets:
-                # This should never happen as we write it first, but just in case
-                df.to_excel(writer, sheet_name='Products', index=False)
-            
-            print(f"\nУспешно са копирани {sheets_copied} допълнителни листа от оригиналния файл.")
-        
-        print(f"\nФайлът е запазен успешно като: {output_file}")
-        
-    finally:
-        # Clean up the temporary file
-        if os.path.exists(temp_products):
-            os.remove(temp_products)
+    print(f"\nФайлът е запазен успешно като: {output_file}")
     
     # Print summary report
     print_summary_report(
-        total_products=len(df),
-        rows_with_data=rows_with_data_count,
+        types_added_count=types_added_count,
+        rows_with_data_count=rows_with_data_count,
         updated_count=updated_count,
         json_parse_errors=json_parse_errors,
         unmatched_products=unmatched_products,
-        output_file=output_file
+        output_path=output_file
     )
     
     print("\n" + "="*80)
