@@ -130,26 +130,55 @@ def process_woocommerce_to_shopify(file_path: str, output_file: str = None) -> O
 
     # Determine output file path if not provided
     if output_file is None:
-        base_name = os.path.splitext(file_path)[0]
-        output_path = f"{base_name}_output.xlsx"
-    else:
-        output_path = output_file
-        
+        base, ext = os.path.splitext(file_path)
+        output_file = f"{base}_output{ext}"
+
     # Ensure the output directory exists
-    os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
+    os.makedirs(os.path.dirname(os.path.abspath(output_file)), exist_ok=True)
 
-    # Save the final output
-    print(f"\nЗапис на резултатите в: {output_path}")
-    io_mod.write_products_df(df, output_path)
-    print(f"-> Файлът е запазен успешно.")
-
+    # Write the output file, preserving all sheets except 'prodct' and 'Products' from the original file
+    print("\n" + "="*80)
+    print("ЗАПАЗВАНЕ НА ФАЙЛА СЪС ЗАПАЗВАНЕ НА ВСИЧКИ ЛИСТОВЕ (ОСВЕН 'prodct' И 'Products')")
+    print("="*80)
+    
+    # First, create a copy of all sheets except 'prodct' and 'Products' to a temporary file
+    temp_output = output_file.replace('.xlsx', '_other_sheets.xlsx')
+    other_sheets_copied = io_mod.copy_other_sheets(file_path, temp_output)
+    
+    if other_sheets_copied:
+        print(f"\nУспешно са копирани всички други листове в временен файл: {temp_output}")
+    
+    # Now write our main data to the final output file, including other sheets
+    print("\nЗапис на обработените данни в крайния файл...")
+    
+    # Copy other sheets from the temporary file to the final output
+    if other_sheets_copied and os.path.exists(temp_output):
+        print(f"\nКопиране на другите листове в крайния файл...")
+        with pd.ExcelWriter(output_file, engine='openpyxl', mode='a', if_sheet_exists='overlay') as writer:
+            xls = pd.ExcelFile(temp_output, engine='openpyxl')
+            for sheet_name in xls.sheet_names:
+                if sheet_name != 'Products':  # Double check to be safe
+                    print(f"  - Добавяне на лист: {sheet_name}")
+                    sheet_df = pd.read_excel(xls, sheet_name=sheet_name)
+                    sheet_df.to_excel(writer, sheet_name=sheet_name, index=False)
+        
+        # Clean up the temporary file
+        os.remove(temp_output)
+        print("Всички листове са копирани успешно.")
+    
+    # Print summary report
     print_summary_report(
-        types_added_count=types_added_count,
-        rows_with_data_count=rows_with_data_count,
+        total_products=len(df),
+        rows_with_data=rows_with_data_count,
         updated_count=updated_count,
         json_parse_errors=json_parse_errors,
         unmatched_products=unmatched_products,
-        output_path=output_path,
+        output_file=output_file
     )
-
-    return output_path
+    
+    print("\n" + "="*80)
+    print("ОБРАБОТКАТА ПРИКЛЮЧИ УСПЕШНО!")
+    print(f"Резултатният файл е запазен като: {output_file}")
+    print("="*80)
+    
+    return output_file

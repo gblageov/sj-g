@@ -110,12 +110,109 @@ def remove_xts_blocks_columns(df: pd.DataFrame) -> Tuple[pd.DataFrame, int]:
     return df, len(columns_to_remove)
 
 
-def write_products_df(df: pd.DataFrame, output_path: str):
+def copy_other_sheets(input_path: str, output_path: str) -> bool:
+    """
+    Copies all sheets except 'prodct' and 'Products' from input Excel file to a new Excel file.
+    Adds logging and verification of the copied data.
+    
+    Args:
+        input_path: Path to the input Excel file
+        output_path: Path to save the output Excel file
+        
+    Returns:
+        bool: True if successful, False otherwise
+    """
+    try:
+        print(f"\nЗапочва копиране на всички листове освен 'prodct' и 'Products' от {input_path}...")
+        
+        # Read all sheets from the input file
+        xls = pd.ExcelFile(input_path, engine='openpyxl')
+        sheet_names = [sheet for sheet in xls.sheet_names 
+                      if sheet.lower() not in ['prodct', 'products']]
+        
+        if not sheet_names:
+            print("ВНИМАНИЕ: Не са намерени листове за копиране (освен 'prodct' и 'Products').")
+            return False
+            
+        print(f"Намерени са {len(sheet_names)} листа за копиране: {', '.join(sheet_names)}")
+        
+        # Create a new Excel writer
+        with pd.ExcelWriter(output_path, engine='xlsxwriter') as writer:
+            # Process each sheet
+            for sheet_name in sheet_names:
+                print(f"\nОбработка на лист '{sheet_name}'...")
+                
+                # Read the sheet
+                df = pd.read_excel(xls, sheet_name=sheet_name)
+                row_count = len(df)
+                print(f"-> Листът '{sheet_name}' съдържа {row_count} реда и {len(df.columns)} колони.")
+                
+                # Write to the new file
+                df.to_excel(writer, sheet_name=sheet_name, index=False)
+                print(f"-> Листът '{sheet_name}' е копиран успешно.")
+                
+                # Verify random rows
+                if row_count > 0:
+                    print("  Проверка на произволни редове:")
+                    sample_size = min(5, row_count)
+                    random_rows = df.sample(n=sample_size, random_state=42)
+                    
+                    for idx, row in random_rows.iterrows():
+                        # Convert row to string, handle NaN values
+                        row_str = ', '.join([f"{k}: {v if pd.notna(v) else 'NaN'}" 
+                                          for k, v in row.items()])
+                        print(f"  - Ред {idx+2}: {row_str[:100]}...")
+        
+        print(f"\nВсички листове са копирани успешно в: {output_path}")
+        return True
+        
+    except Exception as e:
+        print(f"ГРЕШКА при копиране на листовете: {str(e)}")
+        return False
+
+
+def write_products_df(df: pd.DataFrame, output_path: str, input_path: str = None):
     """
     Writes the DataFrame to the given Excel path with the 'Products' sheet.
-    Prints brief diagnostics to match current behavior.
+    If input_path is provided, copies all other sheets from the input file.
+    
+    Args:
+        df: DataFrame to write
+        output_path: Path to save the output Excel file
+        input_path: Optional path to the input Excel file to copy other sheets from
     """
     print("\nОбработката на редовете приключи. Започва запис на новия Excel файл...")
     print("Тази стъпка може да отнеме известно време, моля изчакайте...")
-    df.to_excel(output_path, index=False, sheet_name='Products', engine='xlsxwriter')
+    
+    # If input path is provided, copy all sheets except 'prodct' first
+    if input_path and os.path.exists(input_path):
+        # Create a temporary file for the main data
+        temp_path = output_path.replace('.xlsx', '_temp.xlsx')
+        df.to_excel(temp_path, index=False, sheet_name='Products', engine='xlsxwriter')
+        
+        # Now copy all sheets from temp and input files to final output
+        with pd.ExcelWriter(output_path, engine='xlsxwriter') as writer:
+            # Copy Products sheet first
+            df.to_excel(writer, sheet_name='Products', index=False)
+            
+            # Copy all other sheets from input file except 'prodct'
+            xls = pd.ExcelFile(input_path, engine='openpyxl')
+            sheets_copied = 0
+            
+            for sheet_name in xls.sheet_names:
+                if sheet_name.lower() != 'prodct' and sheet_name != 'Products':
+                    sheet_df = pd.read_excel(xls, sheet_name=sheet_name)
+                    sheet_df.to_excel(writer, sheet_name=sheet_name, index=False)
+                    sheets_copied += 1
+            
+            print(f"\nУспешно са копирани {sheets_copied} допълнителни листа от оригиналния файл.")
+            
+    else:
+        # If no input path, just write the Products sheet
+        df.to_excel(output_path, index=False, sheet_name='Products', engine='xlsxwriter')
+    
     print(f"\nОбновеният файл е запазен като: {output_path}")
+    
+    # If we created a temp file, clean it up
+    if 'temp_path' in locals() and os.path.exists(temp_path):
+        os.remove(temp_path)
