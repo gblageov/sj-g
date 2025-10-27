@@ -12,6 +12,8 @@ from .mapping import build_sku_to_handle, build_woo_id_to_handle
 from .parsing import extract_woobt_dict
 from .report import print_summary_report
 from collections import defaultdict
+import json
+import os
 
 
 def process_woocommerce_to_shopify(file_path: str, output_file: str = None) -> Optional[str]:
@@ -39,10 +41,18 @@ def process_woocommerce_to_shopify(file_path: str, output_file: str = None) -> O
     else:
         print("-> Не са намерени колони за премахване, съдържащи 'Metafield: woo.xts-blocks' в името.")
 
-    # Populate 'Type'
+    # Populate 'Type' column
     print("\nЗапочва попълване на колона 'Type' (търсене на най-пълно съвпадение)...")
     types_added_count = populate_type_column(df, PRODUCT_TYPES)
     print(f"-> Попълването приключи. Добавени са {types_added_count} типа в колона 'Type'.")
+    
+    # Update types based on new-types.json mapping
+    print("\nЗапочва актуализиране на типовете според new-types.json...")
+    updated_types_count = update_product_types(df)
+    if updated_types_count > 0:
+        print(f"-> Актуализирани са {updated_types_count} типа според new-types.json")
+    else:
+        print("-> Не са намерени типове за актуализиране според new-types.json")
 
     # Diagnostic: Report products without Type
     rows_without_type = []
@@ -180,7 +190,7 @@ def process_woocommerce_to_shopify(file_path: str, output_file: str = None) -> O
     print_summary_report(
         types_added_count=types_added_count,
         rows_with_data_count=rows_with_data_count,
-        updated_count=updated_count,
+        updated_count=updated_count + updated_types_count,  # Include type updates in the total
         json_parse_errors=json_parse_errors,
         unmatched_products=unmatched_products,
         output_path=output_file
@@ -288,3 +298,70 @@ def generate_product_types_report(df: pd.DataFrame, output_dir: str) -> str:
         print(f"{i}. {p_type}: {count} продукти ({(count/total_products*100):.1f}%)")
     
     return report_path
+
+
+def update_product_types(df: pd.DataFrame) -> int:
+    """
+    Update product types based on the mappings from new-types.json
+    
+    Args:
+        df: DataFrame containing the products data with 'Type' column
+        
+    Returns:
+        Number of product types that were updated
+    """
+    # Path to the new-types.json file (in the project root)
+    json_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'new-types.json')
+    
+    if not os.path.exists(json_path):
+        print(f"  Внимание: Файлът new-types.json не е намерен на адрес: {json_path}")
+        return 0
+    
+    try:
+        # Load the type mappings
+        with open(json_path, 'r', encoding='utf-8') as f:
+            type_mappings = json.load(f)
+        
+        # Create a mapping dictionary (case-insensitive)
+        type_map = {}
+        for item in type_mappings:
+            old_type = item.get('Type', '').strip()
+            new_type = item.get('New Type', '').strip()
+            if old_type and new_type and old_type.lower() != new_type.lower():
+                type_map[old_type.lower()] = new_type
+        
+        if not type_map:
+            print("  Внимание: Не са намерени валидни съпоставяния на типове в new-types.json")
+            return 0
+        
+        # Track changes
+        changes = {}
+        
+        # Update types in the DataFrame
+        for idx, row in df.iterrows():
+            current_type = str(row['Type']) if pd.notna(row['Type']) else ''
+            if current_type and current_type.lower() in type_map:
+                new_type = type_map[current_type.lower()]
+                if current_type != new_type:
+                    df.at[idx, 'Type'] = new_type
+                    changes[current_type] = changes.get(current_type, 0) + 1
+        
+        # Print summary of changes
+        if changes:
+            print("\n  Справка за променените типове:")
+            print("  " + "-" * 40)
+            total_changes = 0
+            for old_type, count in sorted(changes.items(), key=lambda x: x[1], reverse=True):
+                new_type = type_map[old_type.lower()]
+                print(f"  • {old_type} -> {new_type}: {count} продукта")
+                total_changes += count
+            print(f"  \n  Общо променени типове: {len(changes)}")
+            print(f"  Общ брой продукти с променен тип: {total_changes}")
+            
+        return total_changes
+        
+    except Exception as e:
+        print(f"  Грешка при обработка на new-types.json: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return 0
