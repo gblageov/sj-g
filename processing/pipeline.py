@@ -11,6 +11,7 @@ from .type_detection import populate_type_column
 from .mapping import build_sku_to_handle, build_woo_id_to_handle
 from .parsing import extract_woobt_dict
 from .report import print_summary_report
+from collections import defaultdict
 
 
 def process_woocommerce_to_shopify(file_path: str, output_file: str = None) -> Optional[str]:
@@ -188,6 +189,102 @@ def process_woocommerce_to_shopify(file_path: str, output_file: str = None) -> O
     print("\n" + "="*80)
     print("ОБРАБОТКАТА ПРИКЛЮЧИ УСПЕШНО!")
     print(f"Резултатният файл е запазен като: {output_file}")
+    
+    # Generate product types report
+    generate_product_types_report(df, output_dir)
+    
     print("="*80)
     
     return output_file
+
+
+def generate_product_types_report(df: pd.DataFrame, output_dir: str) -> str:
+    """
+    Generate a report of product types and their counts.
+    
+    Args:
+        df: DataFrame containing the products data
+        output_dir: Directory to save the report
+        
+    Returns:
+        Path to the generated report file
+    """
+    print("\nГенериране на справка за продуктовите типове...")
+    
+    # Count occurrences of each product type
+    type_counts = defaultdict(int)
+    for product_type in df['Type'].dropna():
+        if isinstance(product_type, str):  # Ensure it's a string
+            type_counts[product_type.strip()] += 1
+    
+    if not type_counts:
+        print("Не са намерени продуктови типове за анализ.")
+        return ""
+    
+    # Create a DataFrame with the results
+    report_data = []
+    for p_type, count in sorted(type_counts.items(), key=lambda x: x[1], reverse=True):
+        report_data.append({
+            'Тип продукт': p_type,
+            'Брой продукти': count,
+            'Процент': f"{(count / len(df) * 100):.2f}%"
+        })
+    
+    report_df = pd.DataFrame(report_data)
+    
+    # Generate output filename with timestamp
+    timestamp = datetime.now().strftime("%m-%d-%H%M")
+    report_filename = f"sj-types-{timestamp}.xlsx"
+    report_path = os.path.join(output_dir, report_filename)
+    
+    # Save to Excel
+    report_df.to_excel(report_path, index=False, engine='xlsxwriter')
+    
+    # Add some formatting to the Excel file
+    with pd.ExcelWriter(report_path, engine='xlsxwriter') as writer:
+        report_df.to_excel(writer, index=False, sheet_name='Product Types')
+        
+        # Get the xlsxwriter workbook and worksheet objects
+        workbook = writer.book
+        worksheet = writer.sheets['Product Types']
+        
+        # Add a header format
+        header_format = workbook.add_format({
+            'bold': True,
+            'text_wrap': True,
+            'valign': 'top',
+            'bg_color': '#4472C4',
+            'font_color': 'white',
+            'border': 1
+        })
+        
+        # Write the column headers with the defined format
+        for col_num, value in enumerate(report_df.columns.values):
+            worksheet.write(0, col_num, value, header_format)
+        
+        # Set column widths
+        worksheet.set_column('A:A', 40)  # Product Type
+        worksheet.set_column('B:C', 20)  # Count and Percentage
+        
+        # Add a table with autofilter
+        (max_row, max_col) = report_df.shape
+        column_settings = [{'header': column} for column in report_df.columns]
+        worksheet.add_table(0, 0, max_row, max_col - 1, {
+            'columns': column_settings,
+            'style': 'Table Style Medium 2',
+            'name': 'ProductTypesTable',
+            'autofilter': True
+        })
+    
+    print(f"Справката за продуктовите типове е запазена като: {report_path}")
+    
+    # Print summary
+    total_products = sum(type_counts.values())
+    unique_types = len(type_counts)
+    print(f"\nОбщ брой продукти: {total_products}")
+    print(f"Брой уникални типове: {unique_types}")
+    print("\nТоп 10 най-често срещани типове:")
+    for i, (p_type, count) in enumerate(sorted(type_counts.items(), key=lambda x: x[1], reverse=True)[:10], 1):
+        print(f"{i}. {p_type}: {count} продукти ({(count/total_products*100):.1f}%)")
+    
+    return report_path
