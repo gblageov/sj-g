@@ -1,7 +1,7 @@
 import os
 import sys
 import pandas as pd
-from typing import Tuple
+from typing import Tuple, List, Union
 from .constants import TARGET_METAFIELD_COLUMN, COLUMN_RENAMES
 
 
@@ -29,6 +29,11 @@ def read_products_df(file_path: str):
             renames_to_apply[old] = new
     if renames_to_apply:
         df.rename(columns=renames_to_apply, inplace=True)
+    
+    # Process column values to convert pipe-separated strings to lists
+    for col in df.columns:
+        if col in COLUMN_RENAMES.values() or col in COLUMN_RENAMES.keys():
+            df[col] = df[col].apply(process_column_value)
 
     # Normalize engraving enable column values: 'yes' -> 'True', 'no' -> 'False' (as text)
     # Handle possible column naming variants (with/without 'Metafield: ' prefix)
@@ -84,6 +89,37 @@ def read_products_df(file_path: str):
     df[TARGET_METAFIELD_COLUMN] = df[TARGET_METAFIELD_COLUMN].astype(object)
 
     return df
+
+
+def process_column_value(value: Union[str, float, int, None]) -> str:
+    """
+    Process a column value to convert pipe-separated strings to JSON-formatted string arrays.
+    
+    Args:
+        value: The value to process
+        
+    Returns:
+        JSON-formatted string array with double quotes (e.g., ["value1", "value2"]) or
+        empty string if input is None, NaN, or empty
+    """
+    if pd.isna(value) or value is None:
+        return ''
+    
+    # Convert to string in case it's a number
+    str_value = str(value).strip()
+    if not str_value:
+        return ''
+        
+    # Split by pipe, strip whitespace, and ensure non-empty parts
+    parts = [part.strip() for part in str_value.split('|') if part.strip()]
+    
+    # If no valid parts after splitting, return empty string
+    if not parts:
+        return ''
+        
+    # Convert to JSON string with double quotes
+    import json
+    return json.dumps(parts, ensure_ascii=False)
 
 
 def remove_xts_blocks_columns(df: pd.DataFrame) -> Tuple[pd.DataFrame, int]:
