@@ -101,10 +101,24 @@ def process_customer_file(input_file, output_file=None):
         print(f"\nFixing missing data...")
         fixed_count = 0
         
+        # Generate column statistics before fixing
+        print(f"\n" + "=" * 50)
+        print("COLUMN STATISTICS BEFORE FIXING")
+        print("=" * 50)
+        
+        for col in existing_columns:
+            filled_count = df[col].notna().sum() - (df[col] == '').sum()
+            missing_count = df[col].isna().sum() + (df[col] == '').sum()
+            print(f"{col} - {filled_count} filled fields, {missing_count} missing fields")
+        
         for col in existing_columns:
             missing_before = df[col].isna().sum() + (df[col] == '').sum()
             
-            if 'Phone' in col:
+            if col == 'Customer: Email':
+                # Fill email field with "shopify@getnada.com"
+                df[col] = df[col].fillna('shopify@getnada.com')
+                df[col] = df[col].replace('', 'shopify@getnada.com')
+            elif 'Phone' in col:
                 # Fill phone fields with "+1234567890"
                 df[col] = df[col].fillna('+1234567890')
                 df[col] = df[col].replace('', '+1234567890')
@@ -119,6 +133,16 @@ def process_customer_file(input_file, output_file=None):
                 fixed_count += missing_before
         
         print(f"\nTotal fixed values: {fixed_count}")
+        
+        # Generate column statistics after fixing
+        print(f"\n" + "=" * 50)
+        print("COLUMN STATISTICS AFTER FIXING")
+        print("=" * 50)
+        
+        for col in existing_columns:
+            filled_count = df[col].notna().sum() - (df[col] == '').sum()
+            missing_count = df[col].isna().sum() + (df[col] == '').sum()
+            print(f"{col} - {filled_count} filled fields, {missing_count} missing fields")
         
         # Verify no missing data remains in required fields
         print(f"\nVerifying fixed data...")
@@ -142,6 +166,7 @@ def process_customer_file(input_file, output_file=None):
         
         # Save the fixed file
         print(f"\nSaving fixed file to: {output_file}")
+        print("Please wait... Processing and saving the file (this may take a moment for large files)")
         
         # Use openpyxl engine for better compatibility
         try:
