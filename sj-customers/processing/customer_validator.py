@@ -170,8 +170,10 @@ def process_customer_file(input_file, output_file=None):
         
         # Use openpyxl engine for better compatibility
         try:
-            df.to_excel(output_file, index=False, engine='openpyxl')
-            print(f"File saved successfully using openpyxl engine")
+            # Save with custom sheet name "Orders"
+            with pd.ExcelWriter(output_file, engine='openpyxl') as writer:
+                df.to_excel(writer, index=False, sheet_name='Orders')
+            print(f"File saved successfully using openpyxl engine with sheet name 'Orders'")
             
             # Verify the file was created and is readable
             if os.path.exists(output_file):
