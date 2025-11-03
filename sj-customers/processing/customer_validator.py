@@ -115,9 +115,28 @@ def process_customer_file(input_file, output_file=None):
             missing_before = df[col].isna().sum() + (df[col] == '').sum()
             
             if col == 'Customer: Email':
-                # Fill email field with "shopify@getnada.com"
-                df[col] = df[col].fillna('shopify@getnada.com')
-                df[col] = df[col].replace('', 'shopify@getnada.com')
+                # Fill and normalize email field with default when missing or invalid
+                # Treat as missing if NaN or empty/whitespace
+                default_email = 'shopify@email.com'
+                s = df[col]
+                # Create a stripped string view without altering original non-strings
+                s_stripped = s.astype(str).str.strip()
+                # Basic email validity regex (simple but effective)
+                valid_pattern = r'^[^@\s]+@[^@\s]+\.[^@\s]+$'
+                # Missing values mask (NaN or empty after strip)
+                mask_missing = s.isna() | (s_stripped == '')
+                # Explicit known bad placeholder values
+                known_bad = s_stripped.isin(['@email.com'])
+                # Invalid format mask (non-missing but not matching pattern)
+                mask_invalid = s.notna() & (~s_stripped.str.match(valid_pattern, na=False))
+                # Combine all cases to fix
+                to_fix = mask_missing | known_bad | mask_invalid
+                fixed_emails_before = int(to_fix.sum())
+                if fixed_emails_before > 0:
+                    df.loc[to_fix, col] = default_email
+                # Also normalize any leftover whitespace
+                df[col] = df[col].astype(str).str.strip()
+                print(f"  Email normalization: set default for {fixed_emails_before} invalid/missing emails")
             elif 'Phone' in col:
                 # Fill phone fields with "+1234567890"
                 df[col] = df[col].fillna('+1234567890')
