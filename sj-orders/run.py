@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Shopify Customer Data Validator
-Main entry point for the customer data validation and fixing application.
+Shopify Order Data Validator
+Main entry point for the order data validation and fixing application.
 """
 
 import os

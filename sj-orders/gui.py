@@ -12,7 +12,7 @@ CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 if CURRENT_DIR not in sys.path:
     sys.path.insert(0, CURRENT_DIR)
 
-from processing.customer_validator import process_customer_file
+from processing.order_validator import process_customer_file as process_order_file
 
 class ConsoleOutput(StringIO):
     def __init__(self, text_widget):
@@ -26,10 +26,10 @@ class ConsoleOutput(StringIO):
         self.text_widget.update_idletasks()
         self.text_widget.config(state=tk.DISABLED)
 
-class CustomerValidatorApp:
+class OrderValidatorApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("Shopify Customer Data Validator")
+        self.root.title("Shopify Order Data Validator")
         self.root.geometry("800x600")
         
         # Configure grid
@@ -140,7 +140,7 @@ class CustomerValidatorApp:
                     print("-" * 50)
                     
                     # Call the processing function
-                    output = process_customer_file(input_file, output_file=output_excel)
+                    output = process_order_file(input_file, output_file=output_excel)
                     
                     if output:
                         print("\n" + "=" * 50)
@@ -170,7 +170,7 @@ class CustomerValidatorApp:
 
 def main():
     root = tk.Tk()
-    app = CustomerValidatorApp(root)
+    app = OrderValidatorApp(root)
     
     # Set application icon and style
     try:

@@ -2,9 +2,9 @@ import pandas as pd
 import os
 from datetime import datetime
 
-def process_customer_file(input_file, output_file=None):
+def process_order_file(input_file, output_file=None):
     """
-    Process customer data file to validate and fix missing required fields for Shopify import.
+    Process order data file to validate and fix missing required fields for Shopify import.
     
     Args:
         input_file (str): Path to input Excel file
