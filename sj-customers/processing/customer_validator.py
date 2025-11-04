@@ -18,10 +18,32 @@ def process_customer_file(input_file, output_file=None):
         # Read the Excel file
         print(f"Reading file: {input_file}")
         
-        # Try different engines to read the file
+        # Get all sheet names first
         try:
-            df = pd.read_excel(input_file, engine='openpyxl')
-            print(f"File read successfully using openpyxl engine")
+            xl = pd.ExcelFile(input_file, engine='openpyxl')
+            sheet_names = xl.sheet_names
+            print(f"Found {len(sheet_names)} sheets: {', '.join(sheet_names)}")
+            
+            # Check if 'Orders' sheet exists
+            if 'Orders' not in sheet_names:
+                print("Error: The file must contain a sheet named 'Orders'")
+                return None
+                
+            # Read the Orders sheet
+            print("Reading sheet: Orders")
+            df = pd.read_excel(input_file, sheet_name='Orders', engine='openpyxl')
+            print(f"Sheet 'Orders' loaded successfully using openpyxl engine")
+            
+            # Check for empty 'Name' column to determine where to stop processing
+            if 'Name' in df.columns:
+                # Find first empty row in 'Name' column
+                empty_name_mask = df['Name'].isna() | (df['Name'].astype(str).str.strip() == '')
+                first_empty_idx = empty_name_mask.idxmax() if empty_name_mask.any() else len(df)
+                
+                if first_empty_idx < len(df):
+                    print(f"Found empty 'Name' at row {first_empty_idx + 1}, truncating data...")
+                    df = df.iloc[:first_empty_idx].copy()
+                    print(f"Truncated to {len(df)} rows")
         except Exception as e1:
             print(f"Failed to read with openpyxl: {e1}")
             try:
@@ -38,6 +60,7 @@ def process_customer_file(input_file, output_file=None):
         
         print(f"File loaded successfully. Total rows: {len(df)}")
         print(f"Columns found: {list(df.columns)}")
+        
         
         # Define required fields for Shopify
         required_fields = [
@@ -111,43 +134,24 @@ def process_customer_file(input_file, output_file=None):
             missing_count = df[col].isna().sum() + (df[col] == '').sum()
             print(f"{col} - {filled_count} filled fields, {missing_count} missing fields")
         
+        # Process each column in the final dataframe
+        print("\nProcessing final data...")
         for col in existing_columns:
-            missing_before = df[col].isna().sum() + (df[col] == '').sum()
-            
-            if col == 'Customer: Email':
-                # Fill and normalize email field with default when missing or invalid
-                # Treat as missing if NaN or empty/whitespace
-                default_email = 'shopify@email.com'
-                s = df[col]
-                # Create a stripped string view without altering original non-strings
-                s_stripped = s.astype(str).str.strip()
-                # Basic email validity regex (simple but effective)
-                valid_pattern = r'^[^@\s]+@[^@\s]+\.[^@\s]+$'
-                # Missing values mask (NaN or empty after strip)
-                mask_missing = s.isna() | (s_stripped == '')
-                # Explicit known bad placeholder values
-                known_bad = s_stripped.isin(['@email.com'])
-                # Invalid format mask (non-missing but not matching pattern)
-                mask_invalid = s.notna() & (~s_stripped.str.match(valid_pattern, na=False))
-                # Combine all cases to fix
-                to_fix = mask_missing | known_bad | mask_invalid
-                fixed_emails_before = int(to_fix.sum())
-                if fixed_emails_before > 0:
-                    df.loc[to_fix, col] = default_email
-                # Also normalize any leftover whitespace
-                df[col] = df[col].astype(str).str.strip()
-                print(f"  Email normalization: set default for {fixed_emails_before} invalid/missing emails")
-            elif 'Phone' in col:
-                # Fill phone fields with "+1234567890"
-                df[col] = df[col].fillna('+1234567890')
-                df[col] = df[col].replace('', '+1234567890')
-            else:
-                # Fill other fields with "Shopify"
-                df[col] = df[col].fillna('Shopify')
-                df[col] = df[col].replace('', 'Shopify')
-            
-            missing_after = df[col].isna().sum() + (df[col] == '').sum()
+            missing_before = df[col].isna().sum() + (df[col].astype(str).str.strip() == '').sum()
             if missing_before > 0:
+                if col == 'Customer: Email':
+                    df[col] = df[col].fillna('shopify@getnada.com').replace('', 'shopify@getnada.com')
+                    df[col] = df[col].astype(str).str.strip()
+                elif 'Phone' in col:
+                    df[col] = df[col].fillna('+1234567890').replace('', '+1234567890')
+                elif col == 'Billing: Country':
+                    df[col] = 'Bulgaria'
+                elif col == 'Billing: Country Code':
+                    df[col] = 'BG'
+                else:
+                    df[col] = df[col].fillna('Shopify').replace('', 'Shopify')
+                
+                missing_after = df[col].isna().sum() + (df[col].astype(str).str.strip() == '').sum()
                 print(f"  Fixed {col}: {missing_before} missing values -> {missing_after} missing")
                 fixed_count += missing_before
         
@@ -187,12 +191,23 @@ def process_customer_file(input_file, output_file=None):
         print(f"\nSaving fixed file to: {output_file}")
         print("Please wait... Processing and saving the file (this may take a moment for large files)")
         
-        # Use openpyxl engine for better compatibility
+        # Read all sheets from the original file
+        xl = pd.ExcelFile(input_file, engine='openpyxl')
+        sheet_data = {}
+        for sheet_name in xl.sheet_names:
+            if sheet_name == 'Orders':
+                # Use our processed dataframe for the Orders sheet
+                sheet_data[sheet_name] = df
+            else:
+                # Read other sheets as-is
+                sheet_data[sheet_name] = pd.read_excel(xl, sheet_name=sheet_name)
+        
+        # Save all sheets to the output file
         try:
-            # Save with custom sheet name "Orders"
             with pd.ExcelWriter(output_file, engine='openpyxl') as writer:
-                df.to_excel(writer, index=False, sheet_name='Orders')
-            print(f"File saved successfully using openpyxl engine with sheet name 'Orders'")
+                for sheet_name, sheet_df in sheet_data.items():
+                    sheet_df.to_excel(writer, index=False, sheet_name=sheet_name)
+            print(f"File saved successfully with {len(sheet_data)} sheets")
             
             # Verify the file was created and is readable
             if os.path.exists(output_file):
