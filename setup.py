@@ -1,0 +1,12 @@
+from setuptools import setup, find_packages
+
+setup(
+    name="sj-customers",
+    version="0.1",
+    packages=find_packages(),
+    install_requires=[
+        'pandas>=1.3.0',
+        'openpyxl>=3.0.7',
+        'xlrd>=2.0.1',
+    ],
+)
