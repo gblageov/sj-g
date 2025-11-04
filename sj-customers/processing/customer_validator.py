@@ -76,8 +76,15 @@ def process_customer_file(input_file, output_file=None):
             'Shipping: Phone',
             'Shipping: Address 1',
             'Shipping: City',
+            'Shipping: Country',
             'Shipping: Country Code'
         ]
+        
+        # Ensure shipping country columns exist in the dataframe
+        for col in ['Shipping: Country', 'Shipping: Country Code']:
+            if col not in df.columns:
+                df[col] = ''
+                print(f"Added missing column: {col}")
         
         # Check which required columns exist in the dataframe
         existing_columns = [col for col in required_fields if col in df.columns]
@@ -147,6 +154,10 @@ def process_customer_file(input_file, output_file=None):
                 elif col == 'Billing: Country':
                     df[col] = 'Bulgaria'
                 elif col == 'Billing: Country Code':
+                    df[col] = 'BG'
+                elif col == 'Shipping: Country':
+                    df[col] = 'Bulgaria'
+                elif col == 'Shipping: Country Code':
                     df[col] = 'BG'
                 else:
                     df[col] = df[col].fillna('Shopify').replace('', 'Shopify')
@@ -246,6 +257,15 @@ def process_customer_file(input_file, output_file=None):
                 print(f"Error saving with default engine: {fallback_e}")
                 return None
         
+        # Check for missing shipping information in the summary
+        missing_shipping_country = 0
+        missing_shipping_code = 0
+        
+        if 'Shipping: Country' in df.columns:
+            missing_shipping_country = (df['Shipping: Country'].isna() | (df['Shipping: Country'].astype(str).str.strip() == '')).sum()
+        if 'Shipping: Country Code' in df.columns:
+            missing_shipping_code = (df['Shipping: Country Code'].isna() | (df['Shipping: Country Code'].astype(str).str.strip() == '')).sum()
+        
         # Generate summary report
         print(f"\n" + "=" * 50)
         print("SUMMARY REPORT")
@@ -258,6 +278,14 @@ def process_customer_file(input_file, output_file=None):
         print(f"Rows with missing data: {len(rows_with_missing)}")
         print(f"Total values fixed: {fixed_count}")
         print(f"Remaining missing values: {remaining_missing}")
+        
+        # Add shipping information to the report
+        if 'Shipping: Country' in df.columns or 'Shipping: Country Code' in df.columns:
+            print("\nShipping Information:")
+            if 'Shipping: Country' in df.columns:
+                print(f"  - Missing Shipping Country: {missing_shipping_country} rows")
+            if 'Shipping: Country Code' in df.columns:
+                print(f"  - Missing Shipping Country Code: {missing_shipping_code} rows")
         
         if missing_columns:
             print(f"\nWARNING: The following required columns were not found in the file:")
