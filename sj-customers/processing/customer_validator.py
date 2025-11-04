@@ -65,10 +65,12 @@ def process_customer_file(input_file, output_file=None):
         # Define required fields for Shopify
         required_fields = [
             'Customer: Email',
+            'Customer: Phone',
             'Billing: First Name', 
             'Billing: Last Name',
             'Billing: Phone',
             'Billing: Address 1',
+            'Billing: City',
             'Billing: Country Code',  # Priority over 'Billing: Country'
             'Billing: Country',       # Fallback if Country Code is missing
             'Shipping: First Name',
@@ -149,18 +151,74 @@ def process_customer_file(input_file, output_file=None):
                 if col == 'Customer: Email':
                     df[col] = df[col].fillna('shopify@getnada.com').replace('', 'shopify@getnada.com')
                     df[col] = df[col].astype(str).str.strip()
-                elif 'Phone' in col:
+                
+                # Handle Phone fields - check between Customer, Billing and Shipping phones
+                elif col in ['Customer: Phone', 'Billing: Phone', 'Shipping: Phone']:
+                    # Define the other phone columns to check
+                    other_phone_cols = ['Customer: Phone', 'Billing: Phone', 'Shipping: Phone']
+                    other_phone_cols.remove(col)  # Remove current column from the list
+                    
+                    # Create a mask for empty or NaN values in the current column
+                    mask = (df[col].isna() | (df[col].astype(str).str.strip() == ''))
+                    
+                    # Check other phone columns for values
+                    for other_col in other_phone_cols:
+                        if other_col in df.columns and mask.any():
+                            # Find rows where current phone is empty but other phone has value
+                            other_phone_mask = mask & (~df[other_col].isna() & (df[other_col].astype(str).str.strip() != ''))
+                            if other_phone_mask.any():
+                                df.loc[other_phone_mask, col] = df.loc[other_phone_mask, other_col]
+                                # Update the mask for the next iteration
+                                mask = (df[col].isna() | (df[col].astype(str).str.strip() == ''))
+                    
+                    # If still empty after checking other phone fields, set default
                     df[col] = df[col].fillna('+1234567890').replace('', '+1234567890')
-                elif col == 'Billing: Country':
-                    df[col] = 'Bulgaria'
-                elif col == 'Billing: Country Code':
-                    df[col] = 'BG'
-                elif col == 'Shipping: Country':
-                    df[col] = 'Bulgaria'
-                elif col == 'Shipping: Country Code':
-                    df[col] = 'BG'
-                else:
+                
+                # Handle Name fields
+                elif col in ['Billing: First Name', 'Shipping: First Name']:
+                    other_name_col = 'Shipping: First Name' if col == 'Billing: First Name' else 'Billing: First Name'
+                    if other_name_col in df.columns:
+                        mask = (df[col].isna() | (df[col].astype(str).str.strip() == '')) & \
+                               (~df[other_name_col].isna() & (df[other_name_col].astype(str).str.strip() != ''))
+                        df.loc[mask, col] = df.loc[mask, other_name_col]
                     df[col] = df[col].fillna('Shopify').replace('', 'Shopify')
+                
+                # Handle Last Name fields
+                elif col in ['Billing: Last Name', 'Shipping: Last Name']:
+                    other_name_col = 'Shipping: Last Name' if col == 'Billing: Last Name' else 'Billing: Last Name'
+                    if other_name_col in df.columns:
+                        mask = (df[col].isna() | (df[col].astype(str).str.strip() == '')) & \
+                               (~df[other_name_col].isna() & (df[other_name_col].astype(str).str.strip() != ''))
+                        df.loc[mask, col] = df.loc[mask, other_name_col]
+                    df[col] = df[col].fillna('Shopify').replace('', 'Shopify')
+                
+                # Handle Address 1 fields
+                elif col in ['Billing: Address 1', 'Shipping: Address 1']:
+                    other_addr_col = 'Shipping: Address 1' if col == 'Billing: Address 1' else 'Billing: Address 1'
+                    if other_addr_col in df.columns:
+                        mask = (df[col].isna() | (df[col].astype(str).str.strip() == '')) & \
+                               (~df[other_addr_col].isna() & (df[other_addr_col].astype(str).str.strip() != ''))
+                        df.loc[mask, col] = df.loc[mask, other_addr_col]
+                    df[col] = df[col].fillna('Shopify').replace('', 'Shopify')
+                
+                # Handle City fields
+                elif col in ['Billing: City', 'Shipping: City']:
+                    other_city_col = 'Shipping: City' if col == 'Billing: City' else 'Billing: City'
+                    if other_city_col in df.columns:
+                        mask = (df[col].isna() | (df[col].astype(str).str.strip() == '')) & \
+                               (~df[other_city_col].isna() & (df[other_city_col].astype(str).str.strip() != ''))
+                        df.loc[mask, col] = df.loc[mask, other_city_col]
+                    df[col] = df[col].fillna('Shopify').replace('', 'Shopify')
+                
+                # Handle Country fields
+                elif col == 'Billing: Country':
+                    df[col] = df[col].fillna('Bulgaria').replace('', 'Bulgaria')
+                elif col == 'Billing: Country Code':
+                    df[col] = df[col].fillna('BG').replace('', 'BG')
+                elif col == 'Shipping: Country':
+                    df[col] = df[col].fillna('Bulgaria').replace('', 'Bulgaria')
+                elif col == 'Shipping: Country Code':
+                    df[col] = df[col].fillna('BG').replace('', 'BG')
                 
                 missing_after = df[col].isna().sum() + (df[col].astype(str).str.strip() == '').sum()
                 print(f"  Fixed {col}: {missing_before} missing values -> {missing_after} missing")
