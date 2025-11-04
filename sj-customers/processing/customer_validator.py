@@ -191,6 +191,18 @@ def process_customer_file(input_file, output_file=None):
         print(f"\nSaving fixed file to: {output_file}")
         print("Please wait... Processing and saving the file (this may take a moment for large files)")
         
+        # Add 'judgeme_excluded' tag to all rows in the 'Tags' column
+        if 'Tags' in df.columns:
+            # If Tags column exists, append 'judgeme_excluded' to existing tags
+            df['Tags'] = df['Tags'].fillna('').apply(
+                lambda x: f"{x}, judge_me_excluded" if x else "judgeme_excluded"
+            )
+        else:
+            # If Tags column doesn't exist, create it with 'judgeme_excluded'
+            df['Tags'] = 'judgeme_excluded'
+        
+        print("\nAdded 'judgeme_excluded' tag to all rows in the 'Tags' column")
+        
         # Read all sheets from the original file
         xl = pd.ExcelFile(input_file, engine='openpyxl')
         sheet_data = {}
