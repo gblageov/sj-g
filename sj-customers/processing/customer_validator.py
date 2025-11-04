@@ -59,7 +59,7 @@ def process_customer_file(input_file, output_file=None):
                     raise Exception(f"Unable to read Excel file: {e3}")
         
         print(f"File loaded successfully. Total rows: {len(df)}")
-        print(f"Columns found: {list(df.columns)}")
+        # print(f"Columns found: {list(df.columns)}")
         
         
         # Define required fields for Shopify
@@ -117,15 +117,15 @@ def process_customer_file(input_file, output_file=None):
         
         print(f"Found {len(rows_with_missing)} rows with missing required data")
         
-        if rows_with_missing:
-            print("\nRows with missing data:")
-            for row_info in rows_with_missing[:10]:  # Show first 10
-                print(f"  Row {row_info['row_index'] + 1}: Missing {len(row_info['missing_fields'])} fields")
-                for field in row_info['missing_fields']:
-                    print(f"    - {field}")
+        # if rows_with_missing:
+        #     print("\nRows with missing data:")
+        #     for row_info in rows_with_missing[:10]:  # Show first 10
+        #         print(f"  Row {row_info['row_index'] + 1}: Missing {len(row_info['missing_fields'])} fields")
+        #         for field in row_info['missing_fields']:
+        #             print(f"    - {field}")
             
-            if len(rows_with_missing) > 10:
-                print(f"  ... and {len(rows_with_missing) - 10} more rows")
+        #     if len(rows_with_missing) > 10:
+        #         print(f"  ... and {len(rows_with_missing) - 10} more rows")
         
         # Fix missing data
         print(f"\nFixing missing data...")
@@ -152,13 +152,13 @@ def process_customer_file(input_file, output_file=None):
                 elif 'Phone' in col:
                     df[col] = df[col].fillna('+1234567890').replace('', '+1234567890')
                 elif col == 'Billing: Country':
-                    df[col] = 'Bulgaria'
+                    df[col] = df[col].fillna('Bulgaria').replace('', 'Bulgaria')
                 elif col == 'Billing: Country Code':
-                    df[col] = 'BG'
+                    df[col] = df[col].fillna('BG').replace('', 'BG')
                 elif col == 'Shipping: Country':
-                    df[col] = 'Bulgaria'
+                    df[col] = df[col].fillna('Bulgaria').replace('', 'Bulgaria')
                 elif col == 'Shipping: Country Code':
-                    df[col] = 'BG'
+                    df[col] = df[col].fillna('BG').replace('', 'BG')
                 else:
                     df[col] = df[col].fillna('Shopify').replace('', 'Shopify')
                 
