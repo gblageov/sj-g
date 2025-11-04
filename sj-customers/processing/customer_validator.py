@@ -68,6 +68,7 @@ def process_customer_file(input_file, output_file=None):
             'Billing: First Name', 
             'Billing: Last Name',
             'Billing: Phone',
+            'Billing: City', # Priority over 'Billing: Country'
             'Billing: Address 1',
             'Billing: Country Code',  # Priority over 'Billing: Country'
             'Billing: Country',       # Fallback if Country Code is missing
