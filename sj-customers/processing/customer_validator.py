@@ -1,6 +1,130 @@
 import pandas as pd
 import os
 from datetime import datetime
+from typing import Dict, Any, List
+
+def get_order_groups(df: pd.DataFrame) -> Dict[str, Dict[str, Any]]:
+    """
+    Group rows by order and identify the top row for each order.
+    
+    Args:
+        df: Input DataFrame containing order data
+        
+    Returns:
+        Dictionary with order names as keys and order group info as values
+    """
+    if 'Top Row' not in df.columns or 'Name' not in df.columns:
+        return {}
+        
+    order_groups = {}
+    # Work with trimmed string versions of key columns to ensure robust matching
+    name_series = df['Name'].astype(str).str.strip() if 'Name' in df.columns else pd.Series([], dtype=str)
+    top_row_series = df['Top Row'].astype(str).str.strip() if 'Top Row' in df.columns else pd.Series([], dtype=str)
+    top_rows = df[(top_row_series.notna()) & (top_row_series != '')]
+    
+    print(f"Found {len(top_rows)} orders with 'Top Row' values")
+    
+    for _, top_row in top_rows.iterrows():
+        order_name = str(top_row['Name']).strip()
+        if pd.isna(order_name) or order_name == '':
+            continue
+            
+        # Find all rows with the same order name
+        order_rows = df[name_series == order_name].index.tolist()
+        
+        order_groups[order_name] = {
+            'top_row_index': top_row.name,  # index of the top row
+            'row_indices': order_rows       # all row indices in this order
+        }
+    
+    return order_groups
+
+def propagate_order_data(df: pd.DataFrame, order_groups: Dict[str, Dict[str, Any]]) -> pd.DataFrame:
+    """
+    Propagate data from top row to other rows in the same order group.
+    Only fills empty fields in target rows.
+    
+    Args:
+        df: Input DataFrame
+        order_groups: Dictionary of order groups from get_order_groups()
+        
+    Returns:
+        Modified DataFrame with propagated data
+    """
+    if not order_groups:
+        return df
+        
+    fields_to_propagate = [
+        'Customer: Email', 'Customer: First Name', 'Customer: Last Name',
+        'Billing: First Name', 'Billing: Last Name',
+        'Billing: Address 1', 'Billing: City',
+        'Billing: Country', 'Billing: Country Code',
+        'Shipping: First Name', 'Shipping: Last Name',
+        'Shipping: Address 1', 'Shipping: City', 'Shipping: Country',
+        'Shipping: Country Code'
+    ]
+    
+    # Phone handling: derive from any phone-like column on Top Row and propagate to standard phone fields
+    standard_phone_fields = ['Customer: Phone', 'Billing: Phone', 'Shipping: Phone']
+    all_phone_cols = standard_phone_fields + [
+        'Metafield: woo._billing_tel',
+        'Metafield: woo.billing_tel'
+    ]
+    
+    propagated_count = 0
+    propagated_phone_rows = 0
+    
+    for order_name, group in order_groups.items():
+        top_row_idx = group['top_row_index']
+        top_row = df.loc[top_row_idx]
+        
+        # Find a phone value on the Top Row from any known phone column
+        top_phone = None
+        for pcol in all_phone_cols:
+            if pcol in df.columns:
+                val = top_row.get(pcol)
+                if isinstance(val, str):
+                    val = val.strip()
+                if val not in [None, ''] and not pd.isna(val):
+                    top_phone = val
+                    break
+        
+        # First propagate non-phone fields from Top Row
+        for row_idx in group['row_indices']:
+            if row_idx == top_row_idx:
+                continue  # Skip the top row itself
+            for field in fields_to_propagate:
+                if field in df.columns and field in top_row:
+                    target_val = df.at[row_idx, field] if field in df.columns else None
+                    source_val = top_row[field]
+                    if isinstance(target_val, str):
+                        target_val = target_val.strip()
+                    if isinstance(source_val, str):
+                        source_val = source_val.strip()
+                    # Only fill if target is empty and source has a value
+                    if (target_val in [None, ''] or pd.isna(target_val)) and (source_val not in [None, ''] and not pd.isna(source_val)):
+                        df.at[row_idx, field] = source_val
+                        propagated_count += 1
+        
+        # Then propagate phone from Top Row to standard phone fields for the group
+        if top_phone:
+            for row_idx in group['row_indices']:
+                if row_idx == top_row_idx:
+                    continue
+                for phone_field in standard_phone_fields:
+                    if phone_field in df.columns:
+                        current_val = df.at[row_idx, phone_field]
+                        current_val_stripped = current_val.strip() if isinstance(current_val, str) else current_val
+                        if (current_val_stripped in [None, ''] or pd.isna(current_val_stripped)):
+                            df.at[row_idx, phone_field] = top_phone
+                            propagated_phone_rows += 1
+    
+    if propagated_count > 0:
+        print(f"Propagated {propagated_count} non-phone field values from top rows to order items")
+    if propagated_phone_rows > 0:
+        print(f"Propagated phone to {propagated_phone_rows} positions from Top Rows")
+    
+    return df
 
 def process_customer_file(input_file, output_file=None):
     """
@@ -40,6 +164,14 @@ def process_customer_file(input_file, output_file=None):
             if 'Command' in df.columns:
                 df['Command'] = df['Command'].replace('NEW', 'MERGE')
                 print("Updated 'Command' column: Changed 'NEW' to 'MERGE'")
+            
+            # Process order groups if Top Row column exists
+            if 'Top Row' in df.columns:
+                # Find and process order groups
+                order_groups = get_order_groups(df)
+                if order_groups:
+                    print(f"Processing {len(order_groups)} order groups...")
+                    df = propagate_order_data(df, order_groups)
             
             # Ensure TRUE/FALSE values are in uppercase
             for col in df.columns:
@@ -174,13 +306,34 @@ def process_customer_file(input_file, output_file=None):
                         'Metafield: woo._billing_tel',
                         'Metafield: woo.billing_tel'
                     ]
+                    
                     # Remove current column from the list of columns to check
                     other_phone_cols = [c for c in all_phone_cols if c != col and c in df.columns]
                     
                     # Create a mask for empty or NaN values in the current column
                     mask = (df[col].isna() | (df[col].astype(str).str.strip() == ''))
                     
-                    # Check other phone columns for values
+                    # First, check if we have a Top Row with a phone number for this order
+                    if 'Top Row' in df.columns and col in df.columns:
+                        # Find all Top Rows with a phone number
+                        top_rows_with_phone = df[(df['Top Row'].notna()) & 
+                                              (df['Top Row'] != '') & 
+                                              (df[col].notna()) & 
+                                              (df[col] != '')]
+                        
+                        # For each Top Row with a phone number, update all rows with the same Name
+                        for _, top_row in top_rows_with_phone.iterrows():
+                            order_name = top_row['Name']
+                            if pd.notna(order_name) and order_name != '':
+                                # Update all rows with the same Name to use the Top Row's phone number
+                                name_mask = (df['Name'] == order_name) & mask
+                                if name_mask.any():
+                                    df.loc[name_mask, col] = top_row[col]
+                                    print(f"  Updated {name_mask.sum()} rows in order '{order_name}' with Top Row's {col}")
+                                    # Update the mask for the next iteration
+                                    mask = (df[col].isna() | (df[col].astype(str).str.strip() == ''))
+                    
+                    # Then check other phone columns in the same row
                     for other_col in other_phone_cols:
                         if other_col in df.columns and mask.any():
                             # Find rows where current phone is empty but other phone has value
@@ -190,8 +343,10 @@ def process_customer_file(input_file, output_file=None):
                                 # Update the mask for the next iteration
                                 mask = (df[col].isna() | (df[col].astype(str).str.strip() == ''))
                     
-                    # If still empty after checking other phone fields, set default
-                    df[col] = df[col].fillna('+1234567890').replace('', '+1234567890')
+                    # Finally, if still empty after Top Row propagation and cross-field checks, set default phone
+                    if mask.any():
+                        df.loc[mask, col] = '+1234567890'
+                        print(f"  Filled {mask.sum()} missing {col} with default value")
                 
                 # Handle Name fields
                 elif col in ['Billing: First Name', 'Shipping: First Name']:
