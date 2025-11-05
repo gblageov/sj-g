@@ -71,10 +71,29 @@ def propagate_order_data(df: pd.DataFrame, order_groups: Dict[str, Dict[str, Any
     
     # Phone handling: derive from any phone-like column on Top Row and propagate to standard phone fields
     standard_phone_fields = ['Customer: Phone', 'Billing: Phone', 'Shipping: Phone']
-    all_phone_cols = standard_phone_fields + [
+    static_meta_cols = [
         'Metafield: woo._billing_tel',
-        'Metafield: woo.billing_tel'
+        'Metafield: woo.billing_tel',
+        'Metafield: woo._billing_phone',
+        'Metafield: woo.billing_phone',
+        'Metafield: woo._billing_phone_sender',
+        'Metafield: woo._shipping_tel',
+        'Metafield: woo.shipping_tel',
+        'Metafield: woo._shipping_phone',
+        'Metafield: woo.shipping_phone'
     ]
+    # Dynamically include any Woo metafields that look like phone/tel
+    dynamic_meta_cols = [
+        c for c in df.columns
+        if c.startswith('Metafield: woo')
+        and any(k in c.lower() for k in ['billing', 'shipping'])
+        and any(k in c.lower() for k in ['tel', 'phone'])
+    ]
+    # Build unique list while preserving order
+    all_phone_cols = []
+    for c in (standard_phone_fields + static_meta_cols + dynamic_meta_cols):
+        if c in df.columns and c not in all_phone_cols:
+            all_phone_cols.append(c)
     
     propagated_count = 0
     propagated_phone_rows = 0

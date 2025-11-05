@@ -69,7 +69,13 @@ def validate_phone_fields(df: pd.DataFrame, col: str) -> pd.DataFrame:
         'Billing: Phone', 
         'Shipping: Phone',
         'Metafield: woo._billing_tel',
-        'Metafield: woo.billing_tel'
+        'Metafield: woo.billing_tel',
+        'Metafield: woo._billing_phone',
+        'Metafield: woo.billing_phone',
+        'Metafield: woo._shipping_tel',
+        'Metafield: woo.shipping_tel',
+        'Metafield: woo._shipping_phone',
+        'Metafield: woo.shipping_phone'
     ]
     
     # Remove current column from the list of columns to check
@@ -78,24 +84,30 @@ def validate_phone_fields(df: pd.DataFrame, col: str) -> pd.DataFrame:
     # Create a mask for empty or NaN values in the current column
     mask = (df[col].isna() | (df[col].astype(str).str.strip() == ''))
     
-    # First, check if we have a Top Row with a phone number for this order
-    if 'Top Row' in df.columns and col in df.columns:
-        # Find all Top Rows with a phone number
-        top_rows_with_phone = df[(df['Top Row'].notna()) & 
-                              (df['Top Row'] != '') & 
-                              (df[col].notna()) & 
-                              (df[col] != '')]
-        
-        # For each Top Row with a phone number, update all rows with the same Name
-        for _, top_row in top_rows_with_phone.iterrows():
-            order_name = top_row['Name']
-            if pd.notna(order_name) and order_name != '':
-                # Update all rows with the same Name to use the Top Row's phone number
-                name_mask = (df['Name'] == order_name) & mask
+    # First, propagate from Top Row: derive phone from ANY known phone column, then fill current col within that order
+    if 'Top Row' in df.columns and 'Name' in df.columns:
+        name_series = df['Name'].astype(str).str.strip()
+        top_row_series = df['Top Row'].astype(str).str.strip()
+        top_indices = df[(top_row_series.notna()) & (top_row_series != '')].index
+        for idx in top_indices:
+            top_row = df.loc[idx]
+            order_name = str(top_row['Name']).strip()
+            if order_name == '':
+                continue
+            # derive phone from any phone column on the top row
+            top_phone = None
+            for pcol in all_phone_cols:
+                if pcol in df.columns:
+                    val = top_row.get(pcol)
+                    if isinstance(val, str):
+                        val = val.strip()
+                    if val not in [None, ''] and not pd.isna(val):
+                        top_phone = val
+                        break
+            if top_phone:
+                name_mask = (name_series == order_name) & mask
                 if name_mask.any():
-                    df.loc[name_mask, col] = top_row[col]
-                    print(f"  Updated {name_mask.sum()} rows in order '{order_name}' with Top Row's {col}")
-                    # Update the mask for the next iteration
+                    df.loc[name_mask, col] = top_phone
                     mask = (df[col].isna() | (df[col].astype(str).str.strip() == ''))
     
     # Then check other phone columns in the same row

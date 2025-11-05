@@ -16,41 +16,49 @@ if CURRENT_DIR not in sys.path:
 from processing.customer_validator import process_customer_file
 
 def create_test_file():
-    """Create a test Excel file with missing data"""
-    
-    # Create test data with missing values
-    test_data = {
-        'Customer: Email': ['test1@example.com', '', 'test3@example.com'],
-        'Billing: First Name': ['John', '', 'Jane'],
-        'Billing: Last Name': ['Doe', 'Smith', ''],
-        'Billing: Phone': ['+1234567890', '', ''],
-        'Billing: Address 1': ['123 Main St', '', '456 Oak Ave'],
-        'Billing: Country Code': ['US', 'BG', ''],
-        'Shipping: First Name': ['John', '', 'Jane'],
-        'Shipping: Last Name': ['Doe', 'Smith', ''],
-        'Shipping: Phone': ['', '+9876543210', ''],
-        'Shipping: Address 1': ['123 Main St', '', '456 Oak Ave'],
-        'Shipping: City': ['New York', '', 'Sofia'],
-        'Shipping: Country Code': ['US', 'BG', '']
-    }
-    
-    df = pd.DataFrame(test_data)
+    """Create a test Excel file with an Orders sheet and Woo metafield phones"""
     test_file = 'test_customers.xlsx'
-    
-    # Save using openpyxl for better compatibility
-    print(f"Creating test file: {test_file}")
+
+    # Minimal Orders sheet including Top Row, Name, and phone fields
+    orders_data = {
+        'Top Row': ['1', '', ''],
+        'Name': ['#1001', '#1001', '#1001'],
+        'Customer: Email': ['top@example.com', '', ''],
+        'Customer: Phone': ['', '', ''],
+        'Billing: First Name': ['Top', '', ''],
+        'Billing: Last Name': ['Row', '', ''],
+        'Billing: Phone': ['', '', ''],
+        'Shipping: Phone': ['', '', ''],
+        'Metafield: woo._billing_tel': ['+359888000111', '', ''],
+        'Metafield: woo.billing_tel': ['', '', ''],
+        'Billing: Address 1': ['Addr', '', ''],
+        'Billing: City': ['Sofia', '', ''],
+        'Billing: Country Code': ['BG', '', ''],
+        'Billing: Country': ['Bulgaria', '', ''],
+        'Shipping: First Name': ['', '', ''],
+        'Shipping: Last Name': ['', '', ''],
+        'Shipping: Address 1': ['', '', ''],
+        'Shipping: City': ['', '', ''],
+        'Shipping: Country': ['', '', ''],
+        'Shipping: Country Code': ['', '', ''],
+        'Command': ['NEW', 'NEW', 'NEW']
+    }
+    df_orders = pd.DataFrame(orders_data)
+
+    print(f"Creating test file with Orders sheet: {test_file}")
     try:
-        df.to_excel(test_file, index=False, engine='openpyxl')
-        print(f"Test file created successfully with openpyxl")
-        
-        # Verify it can be read
-        test_read = pd.read_excel(test_file, engine='openpyxl')
-        print(f"Test file verification: {len(test_read)} rows readable")
-        
+        with pd.ExcelWriter(test_file, engine='openpyxl') as writer:
+            df_orders.to_excel(writer, index=False, sheet_name='Orders')
+        print("Test file created successfully with Orders sheet")
+        # Verify
+        xl = pd.ExcelFile(test_file, engine='openpyxl')
+        print(f"Sheets: {xl.sheet_names}")
+        test_read = pd.read_excel(test_file, sheet_name='Orders', engine='openpyxl')
+        print(f"Orders rows readable: {len(test_read)}")
     except Exception as e:
         print(f"Error creating test file: {e}")
         return None
-        
+
     return test_file
 
 def test_file_reading(file_path):
@@ -113,13 +121,7 @@ def main():
                 print(f"\nTesting output file readability...")
                 test_file_reading(output_file)
                 
-                # Clean up test files
-                try:
-                    os.remove(test_file)
-                    os.remove(output_file)
-                    print(f"\nCleaned up test files")
-                except:
-                    pass
+                # Optional: keep files for manual inspection
             else:
                 print(f"\nTest failed!")
 
