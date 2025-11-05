@@ -14,6 +14,7 @@ from .report import print_summary_report
 from collections import defaultdict
 import json
 import os
+from pathlib import Path
 
 
 def process_woocommerce_to_shopify(file_path: str, output_file: str = None) -> Optional[str]:
@@ -41,6 +42,30 @@ def process_woocommerce_to_shopify(file_path: str, output_file: str = None) -> O
     else:
         print("-> Не са намерени колони за премахване, съдържащи 'Metafield: woo.xts-blocks' в името.")
 
+    # Update Vendor column from woocommerce-product-brand-export.xlsx if it exists
+    print("\nПроверка за файл с марки на продуктите...")
+    brand_file = Path("data/woocommerce-product-brand-export.xlsx")
+    if brand_file.exists():
+        print(f"-> Намерен е файл с марки на продуктите: {brand_file}")
+        print(f"-> Брой редове преди актуализация: {len(df)}")
+        print(f"-> Колони в DataFrame: {list(df.columns)[:20]}...")  # Print first 20 columns
+        
+        # Debug: Check for WooCommerce ID column
+        woo_id_columns = [col for col in df.columns if 'woo.id' in col]
+        print(f"-> Намерени колони с WooCommerce ID: {woo_id_columns}")
+        
+        updated_count = update_vendor_from_brand_export(df, str(brand_file))
+        
+        # Debug: Check Vendor column after update
+        if 'Vendor' in df.columns:
+            non_empty_vendors = df[df['Vendor'].notna() & (df['Vendor'] != '')].shape[0]
+            print(f"-> След актуализация: {non_empty_vendors} продукта с попълнена марка (Vendor)")
+        
+        print(f"-> Актуализирани са общо {updated_count} продукта с информация за марка (Vendor).")
+    else:
+        print(f"-> Файл с марки на продуктите не е намерен на пътя: {brand_file.absolute()}")
+        print("-> Създайте папка 'data' и поставете файла 'woocommerce-product-brand-export.xlsx' в нея.")
+    
     # Populate 'Type' column
     print("\nЗапочва попълване на колона 'Type' (търсене на най-пълно съвпадение)...")
     types_added_count = populate_type_column(df, PRODUCT_TYPES)
@@ -364,4 +389,118 @@ def update_product_types(df: pd.DataFrame) -> int:
         print(f"  Грешка при обработка на new-types.json: {str(e)}")
         import traceback
         traceback.print_exc()
+        return 0
+
+
+def update_vendor_from_brand_export(df: pd.DataFrame, brand_file_path: str) -> int:
+    """
+    Update the Vendor column based on the product brand information from woocommerce-product-brand-export.xlsx.
+    
+    Args:
+        df: DataFrame containing the products data
+        brand_file_path: Path to the woocommerce-product-brand-export.xlsx file
+        
+    Returns:
+        int: Number of products updated with vendor information
+    """
+    try:
+        print(f"\n[DEBUG] Зареждане на файл с марки от: {brand_file_path}")
+        # Read the brand export file
+        brand_df = pd.read_excel(brand_file_path, engine='openpyxl')
+        print(f"[DEBUG] Успешно зареден файл с марки. Брой редове: {len(brand_df)}")
+        print(f"[DEBUG] Колони във файла с марки: {list(brand_df.columns)}")
+        
+        # Ensure required columns exist
+        if 'Product ID' not in brand_df.columns or 'Product Brand' not in brand_df.columns:
+            print("ГРЕШКА: Липсват задължителни колони във файла с марките. Очаквани колони: 'Product ID' и 'Product Brand'.")
+            print(f"[DEBUG] Налични колони: {list(brand_df.columns)}")
+            return 0
+            
+        # Create a dictionary mapping product IDs to brands
+        print("\n[DEBUG] Създаване на речник за съпоставяне на ID към марка...")
+        id_to_brand = dict(zip(
+            brand_df['Product ID'].astype(str).str.strip(),
+            brand_df['Product Brand'].astype(str).str.strip()
+        ))
+        
+        # Debug: Print first 5 mappings
+        print(f"[DEBUG] Първи 5 записа от речника (ID -> Brand): {dict(list(id_to_brand.items())[:5])}")
+        
+        # Initialize counter for updated products
+        updated_count = 0
+        
+        # Find ONLY the exact WooCommerce ID column: 'Metafield: woo.id'
+        woo_id_col = 'Metafield: woo.id' if 'Metafield: woo.id' in df.columns else None
+        print(f"[DEBUG] Използвана колона за WooCommerce ID: {woo_id_col}")
+
+        if woo_id_col is None:
+            print("ВНИМАНИЕ: Не е намерена колона 'Metafield: woo.id'. Пропускане на актуализиране на марките.")
+            return 0
+
+        # Debug: Print first 5 WooCommerce IDs from the main DataFrame
+        print(f"[DEBUG] Първи 5 WooCommerce ID от основния файл: {df[woo_id_col].head().tolist()}")
+        print(f"[DEBUG] Брой уникални WooCommerce ID: {df[woo_id_col].nunique()}")
+        print(f"[DEBUG] Брой празни WooCommerce ID: {df[woo_id_col].isna().sum()}")
+        
+        # Ensure Vendor column exists
+        if 'Vendor' not in df.columns:
+            df['Vendor'] = ''
+        
+        # Update Vendor column based on WooCommerce ID and brand mapping
+        print("\n[DEBUG] Започва актуализиране на колоната Vendor...")
+        
+        # First, ensure we have a Vendor column
+        if 'Vendor' not in df.columns:
+            df['Vendor'] = ''
+            print("[DEBUG] Създадена е нова колона 'Vendor'")
+
+        # Helper to normalize IDs to comparable strings (e.g., 1147.0 -> '1147')
+        def _norm_id(val):
+            try:
+                if pd.isna(val):
+                    return ''
+                # If numeric-like, cast to int then str
+                if isinstance(val, (int,)):
+                    return str(val)
+                if isinstance(val, float):
+                    return str(int(val))
+                s = str(val).strip()
+                # Remove trailing .0 if present
+                if s.endswith('.0') and s.replace('.', '', 1).isdigit():
+                    s = s[:-2]
+                return s
+            except Exception:
+                return str(val).strip()
+
+        # Normalize IDs in main DF and in the brand mapping
+        df['_temp_woo_id'] = df[woo_id_col].apply(_norm_id)
+        brand_mapping = pd.Series({ _norm_id(k): v for k, v in id_to_brand.items() })
+
+        # Update only rows where we have a matching brand and the brand is non-empty/non-nan
+        mask = df['_temp_woo_id'].isin(brand_mapping.index)
+        print(f"[DEBUG] Намерени {int(mask.sum())} продукта със съвпадение в списъка с марки (след нормализация)")
+
+        if mask.any():
+            mapped = df.loc[mask, '_temp_woo_id'].map(brand_mapping)
+            # Filter out empty or 'nan' string values
+            valid = mapped.notna() & (mapped.astype(str).str.strip() != '') & (mapped.astype(str).str.lower() != 'nan') & (mapped.astype(str).str.lower() != 'none')
+            df.loc[mask & valid, 'Vendor'] = mapped[valid]
+            updated_count = int((mask & valid).sum())
+            
+            # Debug: Print some examples of updated vendors
+            if updated_count > 0:
+                sample = df[mask][['_temp_woo_id', 'Vendor']].head(3)
+                print("[DEBUG] Примерни актуализирани марки:")
+                for _, row in sample.iterrows():
+                    print(f"  WooID: {row['_temp_woo_id']} -> Vendor: {row['Vendor']}")
+        
+        # Clean up the temporary column
+        df.drop('_temp_woo_id', axis=1, inplace=True)
+        
+        print(f"[DEBUG] Актуализирани са общо {updated_count} продукта")
+        
+        return updated_count
+        
+    except Exception as e:
+        print(f"ГРЕШКА при актуализиране на марките: {str(e)}")
         return 0

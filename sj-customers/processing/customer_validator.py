@@ -70,6 +70,7 @@ def process_customer_file(input_file, output_file=None):
             'Billing: Last Name',
             'Billing: Phone',
             'Billing: Address 1',
+            'Billing: City',
             'Billing: Country Code',  # Priority over 'Billing: Country'
             'Billing: Country',       # Fallback if Country Code is missing
             'Shipping: First Name',
@@ -151,11 +152,18 @@ def process_customer_file(input_file, output_file=None):
                     df[col] = df[col].fillna('shopify@getnada.com').replace('', 'shopify@getnada.com')
                     df[col] = df[col].astype(str).str.strip()
                 
-                # Handle Phone fields - check between Customer, Billing and Shipping phones
+                # Handle Phone fields - check between Customer, Billing, Shipping, and WooCommerce phone fields
                 elif col in ['Customer: Phone', 'Billing: Phone', 'Shipping: Phone']:
-                    # Define the other phone columns to check
-                    other_phone_cols = ['Customer: Phone', 'Billing: Phone', 'Shipping: Phone']
-                    other_phone_cols.remove(col)  # Remove current column from the list
+                    # Define all possible phone columns to check, including WooCommerce specific ones
+                    all_phone_cols = [
+                        'Customer: Phone', 
+                        'Billing: Phone', 
+                        'Shipping: Phone',
+                        'Metafield: woo._billing_tel',
+                        'Metafield: woo.billing_tel'
+                    ]
+                    # Remove current column from the list of columns to check
+                    other_phone_cols = [c for c in all_phone_cols if c != col and c in df.columns]
                     
                     # Create a mask for empty or NaN values in the current column
                     mask = (df[col].isna() | (df[col].astype(str).str.strip() == ''))
@@ -218,10 +226,6 @@ def process_customer_file(input_file, output_file=None):
                     df[col] = df[col].fillna('Bulgaria').replace('', 'Bulgaria')
                 elif col == 'Shipping: Country Code':
                     df[col] = df[col].fillna('BG').replace('', 'BG')
-                
-                # Default for any other fields
-                else:
-                    df[col] = df[col].fillna('Shopify').replace('', 'Shopify')
                 
                 missing_after = df[col].isna().sum() + (df[col].astype(str).str.strip() == '').sum()
                 print(f"  Fixed {col}: {missing_before} missing values -> {missing_after} missing")
