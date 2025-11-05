@@ -1,130 +1,6 @@
 import pandas as pd
 import os
 from datetime import datetime
-from typing import Dict, Any, List
-
-def get_order_groups(df: pd.DataFrame) -> Dict[str, Dict[str, Any]]:
-    """
-    Group rows by order and identify the top row for each order.
-    
-    Args:
-        df: Input DataFrame containing order data
-        
-    Returns:
-        Dictionary with order names as keys and order group info as values
-    """
-    if 'Top Row' not in df.columns or 'Name' not in df.columns:
-        return {}
-        
-    order_groups = {}
-    # Work with trimmed string versions of key columns to ensure robust matching
-    name_series = df['Name'].astype(str).str.strip() if 'Name' in df.columns else pd.Series([], dtype=str)
-    top_row_series = df['Top Row'].astype(str).str.strip() if 'Top Row' in df.columns else pd.Series([], dtype=str)
-    top_rows = df[(top_row_series.notna()) & (top_row_series != '')]
-    
-    print(f"Found {len(top_rows)} orders with 'Top Row' values")
-    
-    for _, top_row in top_rows.iterrows():
-        order_name = str(top_row['Name']).strip()
-        if pd.isna(order_name) or order_name == '':
-            continue
-            
-        # Find all rows with the same order name
-        order_rows = df[name_series == order_name].index.tolist()
-        
-        order_groups[order_name] = {
-            'top_row_index': top_row.name,  # index of the top row
-            'row_indices': order_rows       # all row indices in this order
-        }
-    
-    return order_groups
-
-def propagate_order_data(df: pd.DataFrame, order_groups: Dict[str, Dict[str, Any]]) -> pd.DataFrame:
-    """
-    Propagate data from top row to other rows in the same order group.
-    Only fills empty fields in target rows.
-    
-    Args:
-        df: Input DataFrame
-        order_groups: Dictionary of order groups from get_order_groups()
-        
-    Returns:
-        Modified DataFrame with propagated data
-    """
-    if not order_groups:
-        return df
-        
-    fields_to_propagate = [
-        'Customer: Email', 'Customer: First Name', 'Customer: Last Name',
-        'Billing: First Name', 'Billing: Last Name',
-        'Billing: Address 1', 'Billing: City',
-        'Billing: Country', 'Billing: Country Code',
-        'Shipping: First Name', 'Shipping: Last Name',
-        'Shipping: Address 1', 'Shipping: City', 'Shipping: Country',
-        'Shipping: Country Code'
-    ]
-    
-    # Phone handling: derive from any phone-like column on Top Row and propagate to standard phone fields
-    standard_phone_fields = ['Customer: Phone', 'Billing: Phone', 'Shipping: Phone']
-    all_phone_cols = standard_phone_fields + [
-        'Metafield: woo._billing_tel',
-        'Metafield: woo.billing_tel'
-    ]
-    
-    propagated_count = 0
-    propagated_phone_rows = 0
-    
-    for order_name, group in order_groups.items():
-        top_row_idx = group['top_row_index']
-        top_row = df.loc[top_row_idx]
-        
-        # Find a phone value on the Top Row from any known phone column
-        top_phone = None
-        for pcol in all_phone_cols:
-            if pcol in df.columns:
-                val = top_row.get(pcol)
-                if isinstance(val, str):
-                    val = val.strip()
-                if val not in [None, ''] and not pd.isna(val):
-                    top_phone = val
-                    break
-        
-        # First propagate non-phone fields from Top Row
-        for row_idx in group['row_indices']:
-            if row_idx == top_row_idx:
-                continue  # Skip the top row itself
-            for field in fields_to_propagate:
-                if field in df.columns and field in top_row:
-                    target_val = df.at[row_idx, field] if field in df.columns else None
-                    source_val = top_row[field]
-                    if isinstance(target_val, str):
-                        target_val = target_val.strip()
-                    if isinstance(source_val, str):
-                        source_val = source_val.strip()
-                    # Only fill if target is empty and source has a value
-                    if (target_val in [None, ''] or pd.isna(target_val)) and (source_val not in [None, ''] and not pd.isna(source_val)):
-                        df.at[row_idx, field] = source_val
-                        propagated_count += 1
-        
-        # Then propagate phone from Top Row to standard phone fields for the group
-        if top_phone:
-            for row_idx in group['row_indices']:
-                if row_idx == top_row_idx:
-                    continue
-                for phone_field in standard_phone_fields:
-                    if phone_field in df.columns:
-                        current_val = df.at[row_idx, phone_field]
-                        current_val_stripped = current_val.strip() if isinstance(current_val, str) else current_val
-                        if (current_val_stripped in [None, ''] or pd.isna(current_val_stripped)):
-                            df.at[row_idx, phone_field] = top_phone
-                            propagated_phone_rows += 1
-    
-    if propagated_count > 0:
-        print(f"Propagated {propagated_count} non-phone field values from top rows to order items")
-    if propagated_phone_rows > 0:
-        print(f"Propagated phone to {propagated_phone_rows} positions from Top Rows")
-    
-    return df
 
 def process_customer_file(input_file, output_file=None):
     """
@@ -153,30 +29,10 @@ def process_customer_file(input_file, output_file=None):
                 print("Error: The file must contain a sheet named 'Orders'")
                 return None
                 
-            # Read the Orders sheet while preserving all original values exactly
+            # Read the Orders sheet
             print("Reading sheet: Orders")
-            
-            # First, read the file with all values as strings to prevent any type inference
-            df = pd.read_excel(input_file, sheet_name='Orders', engine='openpyxl', dtype=str, keep_default_na=False)
+            df = pd.read_excel(input_file, sheet_name='Orders', engine='openpyxl')
             print(f"Sheet 'Orders' loaded successfully using openpyxl engine")
-            
-            # Update 'Command' column from 'NEW' to 'MERGE' if it exists
-            if 'Command' in df.columns:
-                df['Command'] = df['Command'].replace('NEW', 'MERGE')
-                print("Updated 'Command' column: Changed 'NEW' to 'MERGE'")
-            
-            # Process order groups if Top Row column exists
-            if 'Top Row' in df.columns:
-                # Find and process order groups
-                order_groups = get_order_groups(df)
-                if order_groups:
-                    print(f"Processing {len(order_groups)} order groups...")
-                    df = propagate_order_data(df, order_groups)
-            
-            # Ensure TRUE/FALSE values are in uppercase
-            for col in df.columns:
-                if df[col].dtype == 'object':
-                    df[col] = df[col].apply(lambda x: x.upper() if isinstance(x, str) and x.upper() in ['TRUE', 'FALSE'] else x)
             
             # Check for empty 'Name' column to determine where to stop processing
             if 'Name' in df.columns:
@@ -209,7 +65,6 @@ def process_customer_file(input_file, output_file=None):
         # Define required fields for Shopify
         required_fields = [
             'Customer: Email',
-            'Customer: Phone',
             'Billing: First Name', 
             'Billing: Last Name',
             'Billing: Phone',
@@ -295,104 +150,53 @@ def process_customer_file(input_file, output_file=None):
                 if col == 'Customer: Email':
                     df[col] = df[col].fillna('shopify@getnada.com').replace('', 'shopify@getnada.com')
                     df[col] = df[col].astype(str).str.strip()
-                
-                # Handle Phone fields - check between Customer, Billing, Shipping, and WooCommerce phone fields
-                elif col in ['Customer: Phone', 'Billing: Phone', 'Shipping: Phone']:
-                    # Define all possible phone columns to check, including WooCommerce specific ones
-                    all_phone_cols = [
-                        'Customer: Phone', 
-                        'Billing: Phone', 
-                        'Shipping: Phone',
-                        'Metafield: woo._billing_tel',
-                        'Metafield: woo.billing_tel'
-                    ]
+                elif 'Phone' in col:
+                    # First, convert all phone columns to string and strip whitespace
+                    phone_cols = ['Customer: Phone', 'Billing: Phone', 'Shipping: Phone']
+                    for pc in phone_cols:
+                        if pc in df.columns:
+                            df[pc] = df[pc].astype(str).str.strip()
                     
-                    # Remove current column from the list of columns to check
-                    other_phone_cols = [c for c in all_phone_cols if c != col and c in df.columns]
-                    
-                    # Create a mask for empty or NaN values in the current column
-                    mask = (df[col].isna() | (df[col].astype(str).str.strip() == ''))
-                    
-                    # First, check if we have a Top Row with a phone number for this order
-                    if 'Top Row' in df.columns and col in df.columns:
-                        # Find all Top Rows with a phone number
-                        top_rows_with_phone = df[(df['Top Row'].notna()) & 
-                                              (df['Top Row'] != '') & 
-                                              (df[col].notna()) & 
-                                              (df[col] != '')]
-                        
-                        # For each Top Row with a phone number, update all rows with the same Name
-                        for _, top_row in top_rows_with_phone.iterrows():
-                            order_name = top_row['Name']
-                            if pd.notna(order_name) and order_name != '':
-                                # Update all rows with the same Name to use the Top Row's phone number
-                                name_mask = (df['Name'] == order_name) & mask
-                                if name_mask.any():
-                                    df.loc[name_mask, col] = top_row[col]
-                                    print(f"  Updated {name_mask.sum()} rows in order '{order_name}' with Top Row's {col}")
-                                    # Update the mask for the next iteration
-                                    mask = (df[col].isna() | (df[col].astype(str).str.strip() == ''))
-                    
-                    # Then check other phone columns in the same row
-                    for other_col in other_phone_cols:
-                        if other_col in df.columns and mask.any():
-                            # Find rows where current phone is empty but other phone has value
-                            other_phone_mask = mask & (~df[other_col].isna() & (df[other_col].astype(str).str.strip() != ''))
-                            if other_phone_mask.any():
-                                df.loc[other_phone_mask, col] = df.loc[other_phone_mask, other_col]
-                                # Update the mask for the next iteration
-                                mask = (df[col].isna() | (df[col].astype(str).str.strip() == ''))
-                    
-                    # Finally, if still empty after Top Row propagation and cross-field checks, set default phone
-                    if mask.any():
-                        df.loc[mask, col] = '+1234567890'
-                        print(f"  Filled {mask.sum()} missing {col} with default value")
-                
-                # Handle Name fields
-                elif col in ['Billing: First Name', 'Shipping: First Name']:
-                    other_name_col = 'Shipping: First Name' if col == 'Billing: First Name' else 'Billing: First Name'
-                    if other_name_col in df.columns:
-                        mask = (df[col].isna() | (df[col].astype(str).str.strip() == '')) & \
-                               (~df[other_name_col].isna() & (df[other_name_col].astype(str).str.strip() != ''))
-                        df.loc[mask, col] = df.loc[mask, other_name_col]
-                    df[col] = df[col].fillna('Shopify').replace('', 'Shopify')
-                
-                # Handle Last Name fields
-                elif col in ['Billing: Last Name', 'Shipping: Last Name']:
-                    other_name_col = 'Shipping: Last Name' if col == 'Billing: Last Name' else 'Billing: Last Name'
-                    if other_name_col in df.columns:
-                        mask = (df[col].isna() | (df[col].astype(str).str.strip() == '')) & \
-                               (~df[other_name_col].isna() & (df[other_name_col].astype(str).str.strip() != ''))
-                        df.loc[mask, col] = df.loc[mask, other_name_col]
-                    df[col] = df[col].fillna('Shopify').replace('', 'Shopify')
-                
-                # Handle Address 1 fields
-                elif col in ['Billing: Address 1', 'Shipping: Address 1']:
-                    other_addr_col = 'Shipping: Address 1' if col == 'Billing: Address 1' else 'Billing: Address 1'
-                    if other_addr_col in df.columns:
-                        mask = (df[col].isna() | (df[col].astype(str).str.strip() == '')) & \
-                               (~df[other_addr_col].isna() & (df[other_addr_col].astype(str).str.strip() != ''))
-                        df.loc[mask, col] = df.loc[mask, other_addr_col]
-                    df[col] = df[col].fillna('Shopify').replace('', 'Shopify')
-                
-                # Handle City fields
+                    # For each phone column, if empty, try to get value from other phone columns
+                    for pc in phone_cols:
+                        if pc in df.columns:
+                            # Get other phone columns
+                            other_cols = [c for c in phone_cols if c != pc and c in df.columns]
+                            
+                            # Check for rows where current phone is empty
+                            mask = (df[pc].isna()) | (df[pc] == '') | (df[pc] == 'nan')
+                            
+                            # For each empty phone, try to get value from other phone columns
+                            for other_col in other_cols:
+                                if mask.any():
+                                    # Get rows where current phone is empty but other phone has value
+                                    fill_mask = mask & (~df[other_col].isna()) & (df[other_col] != '') & (df[other_col] != 'nan')
+                                    if fill_mask.any():
+                                        df.loc[fill_mask, pc] = df.loc[fill_mask, other_col]
+                                        mask = (df[pc].isna()) | (df[pc] == '') | (df[pc] == 'nan')
+                            
+                            # For any remaining empty phones, set default value
+                            if mask.any():
+                                df.loc[mask, pc] = '+1234567890'
+                elif col == 'Billing: Country':
+                    df[col] = 'Bulgaria'
+                elif col == 'Billing: Country Code':
+                    df[col] = 'BG'
+                elif col == 'Shipping: Country':
+                    df[col] = 'Bulgaria'
+                elif col == 'Shipping: Country Code':
+                    df[col] = 'BG'
                 elif col in ['Billing: City', 'Shipping: City']:
                     other_city_col = 'Shipping: City' if col == 'Billing: City' else 'Billing: City'
                     if other_city_col in df.columns:
+                        # If current city is empty but other city has value, use the other city
                         mask = (df[col].isna() | (df[col].astype(str).str.strip() == '')) & \
                                (~df[other_city_col].isna() & (df[other_city_col].astype(str).str.strip() != ''))
                         df.loc[mask, col] = df.loc[mask, other_city_col]
+                    # If still empty, set default to 'Shopify'
                     df[col] = df[col].fillna('Shopify').replace('', 'Shopify')
-                
-                # Handle Country fields
-                elif col == 'Billing: Country':
-                    df[col] = df[col].fillna('Bulgaria').replace('', 'Bulgaria')
-                elif col == 'Billing: Country Code':
-                    df[col] = df[col].fillna('BG').replace('', 'BG')
-                elif col == 'Shipping: Country':
-                    df[col] = df[col].fillna('Bulgaria').replace('', 'Bulgaria')
-                elif col == 'Shipping: Country Code':
-                    df[col] = df[col].fillna('BG').replace('', 'BG')
+                else:
+                    df[col] = df[col].fillna('Shopify').replace('', 'Shopify')
                 
                 missing_after = df[col].isna().sum() + (df[col].astype(str).str.strip() == '').sum()
                 print(f"  Fixed {col}: {missing_before} missing values -> {missing_after} missing")
@@ -461,8 +265,6 @@ def process_customer_file(input_file, output_file=None):
         try:
             with pd.ExcelWriter(output_file, engine='openpyxl') as writer:
                 for sheet_name, sheet_df in sheet_data.items():
-                    # Preserve all values exactly as they are
-                    # No type conversion or value modification will be done
                     sheet_df.to_excel(writer, index=False, sheet_name=sheet_name)
             print(f"File saved successfully with {len(sheet_data)} sheets")
             
