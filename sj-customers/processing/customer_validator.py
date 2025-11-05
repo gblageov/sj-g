@@ -34,6 +34,11 @@ def process_customer_file(input_file, output_file=None):
             df = pd.read_excel(input_file, sheet_name='Orders', engine='openpyxl')
             print(f"Sheet 'Orders' loaded successfully using openpyxl engine")
             
+            # Update 'Command' column from 'NEW' to 'MERGE' if it exists
+            if 'Command' in df.columns:
+                df['Command'] = df['Command'].replace('NEW', 'MERGE')
+                print("Updated 'Command' column: Changed 'NEW' to 'MERGE'")
+            
             # Check for empty 'Name' column to determine where to stop processing
             if 'Name' in df.columns:
                 # Find first empty row in 'Name' column
