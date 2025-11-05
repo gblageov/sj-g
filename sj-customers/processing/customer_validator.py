@@ -29,15 +29,22 @@ def process_customer_file(input_file, output_file=None):
                 print("Error: The file must contain a sheet named 'Orders'")
                 return None
                 
-            # Read the Orders sheet
+            # Read the Orders sheet while preserving all original values exactly
             print("Reading sheet: Orders")
-            df = pd.read_excel(input_file, sheet_name='Orders', engine='openpyxl')
+            
+            # First, read the file with all values as strings to prevent any type inference
+            df = pd.read_excel(input_file, sheet_name='Orders', engine='openpyxl', dtype=str, keep_default_na=False)
             print(f"Sheet 'Orders' loaded successfully using openpyxl engine")
             
             # Update 'Command' column from 'NEW' to 'MERGE' if it exists
             if 'Command' in df.columns:
                 df['Command'] = df['Command'].replace('NEW', 'MERGE')
                 print("Updated 'Command' column: Changed 'NEW' to 'MERGE'")
+            
+            # Ensure TRUE/FALSE values are in uppercase
+            for col in df.columns:
+                if df[col].dtype == 'object':
+                    df[col] = df[col].apply(lambda x: x.upper() if isinstance(x, str) and x.upper() in ['TRUE', 'FALSE'] else x)
             
             # Check for empty 'Name' column to determine where to stop processing
             if 'Name' in df.columns:
@@ -299,6 +306,8 @@ def process_customer_file(input_file, output_file=None):
         try:
             with pd.ExcelWriter(output_file, engine='openpyxl') as writer:
                 for sheet_name, sheet_df in sheet_data.items():
+                    # Preserve all values exactly as they are
+                    # No type conversion or value modification will be done
                     sheet_df.to_excel(writer, index=False, sheet_name=sheet_name)
             print(f"File saved successfully with {len(sheet_data)} sheets")
             
