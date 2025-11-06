@@ -345,7 +345,7 @@ def process_customer_file(input_file, output_file=None):
                     
                     # Finally, if still empty after Top Row propagation and cross-field checks, set default phone
                     if mask.any():
-                        df.loc[mask, col] = '+1234567890'
+                        df.loc[mask, col] = '+359-888888888'
                         print(f"  Filled {mask.sum()} missing {col} with default value")
                 
                 # Handle Name fields
