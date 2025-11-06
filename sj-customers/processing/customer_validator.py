@@ -65,7 +65,7 @@ def propagate_order_data(df: pd.DataFrame, order_groups: Dict[str, Dict[str, Any
     ]
     
     # Phone handling: derive from any phone-like column on Top Row and propagate to standard phone fields
-    standard_phone_fields = ['Customer: Phone', 'Billing: Phone', 'Shipping: Phone']
+    standard_phone_fields = [ 'Billing: Phone', 'Shipping: Phone']
     all_phone_cols = standard_phone_fields + [
         'Metafield: woo._billing_tel',
         'Metafield: woo.billing_tel'
@@ -209,7 +209,6 @@ def process_customer_file(input_file, output_file=None):
         # Define required fields for Shopify
         required_fields = [
             'Customer: Email',
-            'Customer: Phone',
             'Billing: First Name', 
             'Billing: Last Name',
             'Billing: Phone',
@@ -297,10 +296,9 @@ def process_customer_file(input_file, output_file=None):
                     df[col] = df[col].astype(str).str.strip()
                 
                 # Handle Phone fields - check between Customer, Billing, Shipping, and WooCommerce phone fields
-                elif col in ['Customer: Phone', 'Billing: Phone', 'Shipping: Phone']:
+                elif col in ['Billing: Phone', 'Shipping: Phone']:
                     # Define all possible phone columns to check, including WooCommerce specific ones
-                    all_phone_cols = [
-                        'Customer: Phone', 
+                    all_phone_cols = [                        
                         'Billing: Phone', 
                         'Shipping: Phone',
                         'Metafield: woo._billing_tel',
